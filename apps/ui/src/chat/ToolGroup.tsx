@@ -1,5 +1,6 @@
 import type { ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { type ReactNode, useContext, useEffect, useState } from "react";
+import { Markdown } from "../vendor/collab-web/components/transcript/Markdown";
 import { ToolCard } from "../vendor/collab-web/components/transcript/ToolCard";
 import { ThinkingBlock } from "../vendor/collab-web/components/transcript/Transcript";
 import { FoldContext } from "../vendor/collab-web/lib/fold";
@@ -81,6 +82,9 @@ export function ToolGroup({
   const failed = calls.filter((call) => results.get(call.id)?.isError === true).length;
   const now = running.at(-1);
   const status = now !== undefined ? "run" : failed > 0 ? "err" : "ok";
+  // The model's last lead-in ("Checking the queue:") says what the group is doing: its title, as plain words.
+  const lead = items.findLast((item) => item.kind === "lead");
+  const title = lead?.kind === "lead" ? lead.text.replace(/:$/, "").replaceAll("`", "") : null;
 
   return (
     <div className={`tv-card tv-group${failed > 0 ? " tv-card--error" : ""}`}>
@@ -97,7 +101,9 @@ export function ToolGroup({
         )}
         <span className="tv-name">{calls.length} tool calls</span>
         <span className="tv-sum">
-          {now !== undefined ? (
+          {title !== null ? (
+            <span className="tv-group-title">{title}</span>
+          ) : now !== undefined ? (
             <NowRunning call={now} tool={active.get(now.id)} host={host} />
           ) : (
             countsByTool(calls.map((call) => call.name))
@@ -111,6 +117,10 @@ export function ToolGroup({
           {items.map((item) =>
             item.kind === "thinking" ? (
               <ThinkingBlock key={item.key} text={item.text} redacted={item.redacted} />
+            ) : item.kind === "lead" ? (
+              <div key={item.key} className="tv-group-lead">
+                <Markdown text={item.text} />
+              </div>
             ) : (
               <ToolCard
                 key={item.id}

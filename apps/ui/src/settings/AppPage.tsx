@@ -78,8 +78,9 @@ export function AppPage({
         <div className="min-w-0 flex-1">
           <p className="text-sm text-t1">Group tool calls</p>
           <p className="mt-0.5 text-xs text-t3">
-            Two or more tool calls in a row show as one line: how many, by which tools, and the one
-            running now. Click it to see each call.
+            Two or more tool calls in a row show as one line, with omp's short lines between them
+            (&ldquo;Checking the queue:&rdquo;): what it is doing, and how many calls. Click it to
+            see each call.
           </p>
         </div>
         <Switch

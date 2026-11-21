@@ -358,6 +358,60 @@ describe("groupToolRuns", () => {
     ).toEqual([said("After.")]);
   });
 
+  test("one-line lead-ins ending in a colon join the calls' group; an answer, a list or one call alone do not", () => {
+    const kinds = (rows: readonly TranscriptRow[]) =>
+      rows.map((row) =>
+        row.kind === "toolgroup"
+          ? `group[${row.items.map((item) => item.kind).join(",")}]`
+          : row.kind,
+      );
+    const joined = groupToolRuns(
+      buildRows({
+        ...idle,
+        entries: [
+          reply("a1", 1, [said("Checking the queue:"), call("c1")]),
+          result("r1", "c1", 2),
+          reply("a2", 3, [said("Now the log:"), call("c2")]),
+          result("r2", "c2", 4),
+        ],
+      }),
+    );
+    expect(kinds(joined)).toEqual(["group[lead,call,lead,call]"]);
+    // A finding over more than one line stays in view and ends the run.
+    const broken = groupToolRuns(
+      buildRows({
+        ...idle,
+        entries: [
+          reply("a1", 1, [call("c1"), call("c2")]),
+          reply("a2", 3, [said("Found it:\n- the cache is cold"), call("c3"), call("c4")]),
+        ],
+      }),
+    );
+    expect(kinds(broken)).toEqual(["group[call,call]", "entry", "group[call,call]"]);
+    // One call: its lead-in stays as written.
+    const plain = buildRows({
+      ...idle,
+      entries: [reply("a1", 1, [said("Checking:"), call("c1")])],
+    });
+    expect(groupToolRuns(plain)).toBe(plain);
+  });
+
+  test("a lead-in still being written joins only once a call follows it", () => {
+    const saved = [reply("a1", 1, [call("c1"), call("c2")]), result("r1", "c2", 2)];
+    const writing = (content: unknown[]) =>
+      groupToolRuns(
+        buildRows({
+          ...idle,
+          entries: saved,
+          working: true,
+          stream: { role: "assistant", content, timestamp: T + 3 } as never,
+        }),
+      ).map((row) => row.kind);
+    // "Results:" may go on to a list: drawn as text while it is the last block.
+    expect(writing([said("Results:")])).toEqual(["toolgroup", "stream"]);
+    expect(writing([said("Results:"), call("c3")])).toEqual(["toolgroup"]);
+  });
+
   test("a reply that failed stays whole, its calls with it", () => {
     const entries = [
       reply("a1", 1, [call("c1")]),

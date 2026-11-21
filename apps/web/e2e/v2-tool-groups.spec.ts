@@ -82,3 +82,103 @@ realTest.describe("new UI: grouped tool calls", () => {
     },
   );
 });
+
+/** A saved turn as omp writes it: the person's message, then lead-ins and calls with their results, then the answer. */
+const AT = Date.UTC(2026, 10, 21, 9);
+const STAMP = new Date(AT).toISOString();
+const USAGE = {
+  input: 1,
+  output: 1,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 2,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+const reply = (id: string, n: number, content: unknown[], stopReason = "toolUse") => ({
+  type: "message",
+  id,
+  parentId: null,
+  timestamp: STAMP,
+  message: {
+    role: "assistant",
+    content,
+    api: "openai-completions",
+    provider: "fake",
+    model: "fake-model",
+    usage: USAGE,
+    stopReason,
+    timestamp: AT + n,
+  },
+});
+const ran = (id: string, n: number, callId: string, text: string) => ({
+  type: "message",
+  id,
+  parentId: null,
+  timestamp: STAMP,
+  message: {
+    role: "toolResult",
+    toolCallId: callId,
+    toolName: "bash",
+    content: [{ type: "text", text }],
+    isError: false,
+    timestamp: AT + n,
+  },
+});
+const bash = (id: string, command: string) => ({
+  type: "toolCall",
+  id,
+  name: "bash",
+  arguments: { command },
+});
+
+realTest.describe("new UI: grouped tool calls with the lines between them", () => {
+  realTest.use({
+    seedEntries: {
+      entries: [
+        {
+          type: "message",
+          id: "u1",
+          parentId: null,
+          timestamp: STAMP,
+          message: {
+            role: "user",
+            content: [{ type: "text", text: "Why is the queue slow?" }],
+            timestamp: AT,
+          },
+        },
+        reply("a1", 1, [
+          { type: "text", text: "Checking the queue first:" },
+          bash("c1", "gq status"),
+        ]),
+        ran("r1", 2, "c1", "2 running"),
+        reply("a2", 3, [{ type: "text", text: "Reading the `gq` log:" }, bash("c2", "gq tail")]),
+        ran("r2", 4, "c2", "slot 3 waits on disk"),
+        reply("a3", 5, [{ type: "text", text: "Slot 3 waits on the disk." }], "stop"),
+      ],
+    },
+  });
+
+  realTest(
+    "a one-line lead-in joins the group and titles it; the answer stays in view; opened, the lead-ins show between the calls",
+    async ({ realApp }, testInfo) => {
+      testInfo.setTimeout(120_000);
+      const page = await realApp.open({ path: "/" });
+      const transcript = page.getByRole("region", { name: "Transcript" });
+      await page.getByText("Why is the queue slow?").first().click();
+      await expect(transcript.getByText("Slot 3 waits on the disk.")).toBeVisible({
+        timeout: 60_000,
+      });
+
+      const group = transcript.getByRole("button", { name: /^2 tool calls/ });
+      await expect(group).toContainText("Reading the gq log");
+      await expect(transcript.getByText("Checking the queue first:")).toHaveCount(0);
+      await expect(transcript.locator(".tv-card")).toHaveCount(1);
+
+      await group.click();
+      await expect(transcript.getByText("Checking the queue first:")).toBeVisible();
+      await expect(transcript.getByText("gq status")).toBeVisible();
+      await expect(transcript.getByText("gq tail")).toBeVisible();
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+});

@@ -45,7 +45,7 @@ export type TranscriptRow =
   | { readonly kind: "notice"; readonly key: string; readonly notice: ChatNotice }
   | { readonly kind: "toolgroup"; readonly key: string; readonly items: readonly GroupItem[] };
 
-/** One thing a group of tool calls holds, in order: a call, or the thinking between calls. */
+/** One thing a group of tool calls holds, in order: a call, the thinking between calls, or a line leading into one. */
 export type GroupItem =
   | {
       readonly kind: "call";
@@ -61,7 +61,18 @@ export type GroupItem =
       readonly key: string;
       readonly text: string;
       readonly redacted: boolean;
-    };
+    }
+  /** A one-line lead-in the model wrote before a call ("Checking the queue:"); the group's title while it is the last. */
+  | { readonly kind: "lead"; readonly key: string; readonly text: string };
+
+/** The longest one-line text that reads as leading into the next call. */
+const LEAD_IN_MAX = 200;
+
+/** A one-line text ending in a colon, short: what the model says it does next, not an answer or a finding. */
+export function isLeadIn(text: string): boolean {
+  const line = text.trim();
+  return line.length > 0 && line.length < LEAD_IN_MAX && line.endsWith(":") && !line.includes("\n");
+}
 
 /** A `!` or `$` run omp saved in the session (its `bashExecution` and `pythonExecution` messages). */
 function savedShellRun(entry: SessionEntry): ShellRunView | null {
@@ -268,7 +279,16 @@ type Piece =
   | { readonly whole: TranscriptRow }
   | { readonly source: TranscriptRow; readonly index: number; readonly item: GroupItem | null };
 
-function blockItem(block: ReplyBlock, key: string, pending: boolean): GroupItem | null {
+/**
+ * The item a reply's block is in a group, or null when it breaks one. `settled` says the block is finished: a text still
+ * being written ("Results:" may go on to a list) is a lead-in only once a later block follows it.
+ */
+function blockItem(
+  block: ReplyBlock,
+  key: string,
+  pending: boolean,
+  settled: boolean,
+): GroupItem | null {
   switch (block.type) {
     case "toolCall":
       return {
@@ -283,6 +303,10 @@ function blockItem(block: ReplyBlock, key: string, pending: boolean): GroupItem 
       return { kind: "thinking", key, text: block.thinking, redacted: false };
     case "redactedThinking":
       return { kind: "thinking", key, text: "", redacted: true };
+    case "text":
+      return settled && isLeadIn(block.text)
+        ? { kind: "lead", key, text: block.text.trim() }
+        : null;
     default:
       return null;
   }
@@ -330,7 +354,12 @@ function piecesOf(row: TranscriptRow): Piece[] {
     pieces.push({
       source: row,
       index,
-      item: blockItem(block, `${row.key}:${index}`, reply.pending),
+      item: blockItem(
+        block,
+        `${row.key}:${index}`,
+        reply.pending,
+        !reply.pending || index < reply.message.content.length - 1,
+      ),
     });
   });
   return pieces.length === 0 ? [{ whole: row }] : pieces;

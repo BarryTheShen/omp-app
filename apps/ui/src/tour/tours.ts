@@ -3475,7 +3475,7 @@ const TOOL_GROUPS_TOUR: Tour = {
     {
       target: null,
       title: "Tool calls, grouped",
-      text: "Two or more tool calls in a row now show as one card: how many, by which tools, and while omp works, the call running now. Click it to see each call; a red dot means one failed. Text omp writes between calls stays where it was.",
+      text: 'Two or more tool calls in a row now show as one card, with the short lines omp writes between them ("Checking the queue:"): the latest line says what it is doing, then how many calls. Click it to see each call and line; a red dot means one failed. Longer text, answers and conclusions stay in view.',
       action: next,
     },
     {
@@ -3514,7 +3514,7 @@ export const UPDATES: readonly Update[] = [
     id: "2026-11-21-tool-groups",
     when: "2026-11-21T07:50:00Z",
     summary:
-      "Two or more tool calls in a row show as one card: how many, by which tools, and the call running now; click it for each call. Settings → App → Look → Group tool calls turns it off.",
+      'Two or more tool calls in a row show as one card, with omp\'s short lines between them ("Checking the queue:"): the latest says what it is doing; click it for each call. Settings → App → Look → Group tool calls turns it off.',
     tours: [TOOL_GROUPS_TOUR],
   },
   {

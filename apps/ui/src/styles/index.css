@@ -354,6 +354,20 @@
   color: var(--tv-err);
 }
 
+/* The model's lead-in as the group's title, and each lead-in between the calls inside: its words, not code. */
+.tv-group-title {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--tv-fg);
+}
+
+.tv-group-lead {
+  padding: 2px 2px 0;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--tv-muted);
+}
+
 /* What was open in the panel's app when you sent it: a tag over your message, at its right edge, as Notion's. */
 .tl-item .tr-row--user > .tr-above {
   grid-column: 1 / -1;
