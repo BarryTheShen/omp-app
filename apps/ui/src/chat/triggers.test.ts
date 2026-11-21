@@ -114,6 +114,22 @@ describe("findTrigger", () => {
       end: 8,
     });
   });
+
+  test("a mention already taken is finished: its label and the words after it open no menu; a new `@` does", () => {
+    const taken = ["@Summer 2027 Internship"];
+    const box = "read @Summer 2027 Internship ";
+    expect(findTrigger(box, box.length, taken)).toBeNull();
+    expect(findTrigger(`${box}and`, box.length + 3, taken)).toBeNull();
+    // Edited away from the label, it is a search again.
+    expect(findTrigger("read @Summer 2027 Intern", 24, taken)).toMatchObject({
+      form: "spaced",
+      query: "Summer 2027 Intern",
+    });
+    expect(findTrigger(`${box}@lab`, box.length + 4, taken)).toMatchObject({
+      form: "word",
+      query: "lab",
+    });
+  });
 });
 
 describe("matchCommands", () => {

@@ -84,13 +84,16 @@ export function useComposerMenu(
   controller: ChatController,
   text: string,
   caret: number,
+  /** The labels of the mentions the box already holds (`shortenMentions`): finished, never searched again. */
+  taken: ReadonlyMap<string, string>,
 ): {
   readonly menu: ComposerMenuState | null;
   readonly move: (step: 1 | -1) => void;
   readonly pick: (index: number) => BoxState | Promise<BoxState | null> | null;
   readonly dismiss: () => void;
 } {
-  const found = useMemo(() => findTrigger(text, caret), [text, caret]);
+  // `taken` grows only when a row is put in, which changes the text too.
+  const found = useMemo(() => findTrigger(text, caret, taken.keys()), [text, caret, taken]);
   /** A mention of words whose answers found nothing: closed, and not searched, while more is typed after those words. */
   const [ended, setEnded] = useState<{ readonly start: number; readonly query: string } | null>(
     null,

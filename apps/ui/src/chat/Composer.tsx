@@ -242,7 +242,7 @@ export const Composer = memo(function Composer({
     return usagePause?.hold == null ? undefined : holdReason(usagePause.percent, usagePause.hold);
   });
   const draft = controller.draft;
-  const menu = useComposerMenu(controller, text, caret);
+  const menu = useComposerMenu(controller, text, caret, mentionLinks.current);
   const shell = shellRun(text);
   /** Where Up and Down are in the history, and what the box held before; null while not going through it. */
   const browsing = useRef<{ readonly index: number; readonly kept: string } | null>(null);

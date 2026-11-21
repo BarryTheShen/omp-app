@@ -28,12 +28,18 @@ realTest.describe("new UI on an iPad in WebKit", () => {
       const context = await browser.newContext({
         viewport: { width: 1180, height: 820 },
         hasTouch: true,
+        // Linux WebKit has the Push API but no push service behind it: `pushManager.getSubscription()`, which Settings'
+        // Notifications asks, never answers and stops the page. Without a service worker it is never asked.
+        serviceWorkers: "block",
       });
       const page = await realApp.open({ path: "/", context });
       const settings = page.getByRole("button", { name: "Settings" }).first();
       await expect(settings).toBeVisible({ timeout: 120_000 });
       await settings.click();
-      const text = page.getByRole("dialog").first().getByText("How this app looks");
+      // The App page's opening line (AppPage.tsx), where the pointer starts.
+      const text = page
+        .getByRole("dialog", { name: "Settings" })
+        .getByText(/^Its version, how it looks/);
       await expect(text).toBeVisible();
       const at = await text.boundingBox();
       if (at === null) throw new Error("the App page is not drawn");

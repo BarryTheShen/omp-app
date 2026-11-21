@@ -180,7 +180,8 @@ realTest.describe("new UI commands, mentions and shell runs", () => {
         const note = menu.getByRole("option", { name: /Lab report.*note from Notes/ });
         await expect(note).toBeVisible({ timeout: 30_000 });
         await note.click();
-        await expect(box).toHaveValue("read @[Lab report](note:n1) ");
+        // The box shows the mention's label; the link goes out with the message (#54, mentionLabels.ts).
+        await expect(box).toHaveValue("read @Lab report ");
         await expect(menu).toHaveCount(0);
 
         // A word the extension does not know: the folder's files alone, under their usual name.

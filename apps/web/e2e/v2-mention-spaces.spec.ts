@@ -32,7 +32,8 @@ const NOTES = `export default function notes(pi) {
   });
 }
 `;
-const SUMMER = "read @[Summer 2027 Internship](note:n2) ";
+// The box shows the mention's label; the link goes out with the message (#54, mentionLabels.ts).
+const SUMMER = "read @Summer 2027 Internship ";
 
 const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
 const menu = (page: Page) => page.getByRole("listbox", { name: /^Files (and more )?to mention$/ });

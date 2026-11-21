@@ -37,9 +37,14 @@ const SPACED = /(?:^|\s)@([^\s@"][^\s@]*(?: [^\s@]+)* [^\s@]*)$/;
  * An `@` mention starts a word on the caret's line: one word up to the caret; `@"` and a name in quotes, until its
  * closing quote; or words with one space between them (two spaces in a row end it). `start` and `end` are the text a
  * chosen row replaces: the rest of the word under the caret too, and for a name in quotes the rest of it through its
- * closing quote.
+ * closing quote. A mention already taken (`taken`: the labels the box shows for the links it keeps, `@Lab report`) is
+ * finished: neither it nor the words typed after it are searched again.
  */
-export function findTrigger(text: string, caret: number): Trigger | null {
+export function findTrigger(
+  text: string,
+  caret: number,
+  taken: Iterable<string> = [],
+): Trigger | null {
   const before = text.slice(0, caret);
   const command = /^\/(\S*)$/.exec(before);
   if (command !== null) {
@@ -59,6 +64,8 @@ export function findTrigger(text: string, caret: number): Trigger | null {
   const word = WORD.exec(line);
   const match = word ?? SPACED.exec(line);
   if (match === null) return null;
+  const typed = `@${match[1] ?? ""}`;
+  for (const label of taken) if (typed === label || typed.startsWith(`${label} `)) return null;
   const query = match[1] ?? "";
   return {
     kind: "file",
