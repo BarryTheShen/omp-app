@@ -102,7 +102,7 @@ describe("Search by meaning's settings", () => {
       model: "qwen3-embedding-0.6b",
     });
     expect(await readFile(paths.key, "utf8")).toBe("secret-key");
-    expect((await stat(paths.key)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(paths.key)).mode & 0o777).toBe(0o600);
     expect(published.length).toBe(2);
     // A key of "" removes the kept one.
     expect(

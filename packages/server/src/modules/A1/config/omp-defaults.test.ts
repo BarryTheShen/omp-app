@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { AppFailure, type ConfigChanged } from "@omp-app/contracts";
+import { writeFakeScript } from "../../../test-fixtures/fake-program";
 import type { ConfigStoreService } from "./config-store";
 import { createConfigStoreWithOmpDefaults } from "./omp-defaults";
 
@@ -16,11 +17,9 @@ async function temporaryRoot(): Promise<string> {
   return root;
 }
 
-async function fakeOmp(root: string, body: string): Promise<string> {
-  const binary = join(root, "fake-omp");
-  await writeFile(binary, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
-  await chmod(binary, 0o755);
-  return binary;
+/** A stand-in for omp whose Bun code is `body`; the command that starts it. */
+function fakeOmp(root: string, body: string): Promise<string[]> {
+  return writeFakeScript(root, "fake-omp", body);
 }
 
 interface PatientDefaults {
@@ -31,7 +30,7 @@ interface PatientDefaults {
 
 async function serverStore(
   root: string,
-  binary: string,
+  command: readonly string[],
   timeoutMs = 500,
   patient: PatientDefaults = {},
 ) {
@@ -39,7 +38,7 @@ async function serverStore(
   const store = await createConfigStoreWithOmpDefaults(
     { agentDir: join(root, "agent"), appDataDir: join(root, "app-data") },
     {
-      command: [binary],
+      command,
       launchDirectory: root,
       pathEnvironment: Bun.env.PATH ?? "",
       temporaryDirectoryBase: root,
@@ -73,8 +72,8 @@ async function expectUnavailableDefaults(
   body: string,
   timeoutMs: number,
 ): Promise<void> {
-  const binary = await fakeOmp(root, body);
-  const { store, warnings } = await serverStore(root, binary, timeoutMs);
+  const command = await fakeOmp(root, body);
+  const { store, warnings } = await serverStore(root, command, timeoutMs);
   expect(warnings).toHaveLength(1);
   expect(warnings[0]).toContain("defaults");
   await expectNotFound(store, "model");
@@ -89,6 +88,13 @@ afterEach(async () => {
   );
 });
 
+/** The stand-in answers only `config list --json`, as omp's registry read asks; anything else exits 64. */
+const LIST_GUARD = `const [verb, action, format] = Bun.argv.slice(2);
+if (verb !== "config" || action !== "list" || format !== "--json") process.exit(64);`;
+
+/** Prints `text` and a line end. */
+const print = (text: string) => `process.stdout.write(${JSON.stringify(`${text}\n`)});`;
+
 describe("omp ConfigStore defaults", () => {
   test("loads registered values as defaults while a user-set value wins", async () => {
     const root = await temporaryRoot();
@@ -100,14 +106,8 @@ describe("omp ConfigStore defaults", () => {
       "compaction.enabled": { type: "boolean", value: false },
       noDefault: { type: "string" },
     });
-    const binary = await fakeOmp(
-      root,
-      [
-        '[ "$1" = "config" ] && [ "$2" = "list" ] && [ "$3" = "--json" ] || exit 64',
-        `printf '%s\\n' '${payload}'`,
-      ].join("\n"),
-    );
-    const { store, warnings } = await serverStore(root, binary);
+    const command = await fakeOmp(root, `${LIST_GUARD}\n${print(payload)}`);
+    const { store, warnings } = await serverStore(root, command);
 
     expect(await store.read({ key: "compaction.enabled", folder: null })).toMatchObject({
       value: false,
@@ -129,24 +129,14 @@ describe("omp ConfigStore defaults", () => {
 
   test("starts without defaults and warns once when omp exits unsuccessfully", async () => {
     const root = await temporaryRoot();
-    await expectUnavailableDefaults(
-      root,
-      '[ "$1" = "config" ] && [ "$2" = "list" ] && [ "$3" = "--json" ] || exit 64\nexit 1',
-      500,
-    );
+    await expectUnavailableDefaults(root, `${LIST_GUARD}\nprocess.exit(1);`, 500);
   });
 
   test("starts without defaults and warns once when omp times out", async () => {
     const root = await temporaryRoot();
-    await expectUnavailableDefaults(
-      root,
-      '[ "$1" = "config" ] && [ "$2" = "list" ] && [ "$3" = "--json" ] || exit 64\nexec /bin/sleep 30',
-      50,
-    );
+    await expectUnavailableDefaults(root, `${LIST_GUARD}\nawait Bun.sleep(30_000);`, 50);
   });
 });
-
-const LIST_GUARD = '[ "$1" = "config" ] && [ "$2" = "list" ] && [ "$3" = "--json" ] || exit 64';
 
 async function probeValue(store: ConfigStoreService, key: string): Promise<unknown> {
   const entry = await store.read({ key, folder: null });
@@ -157,8 +147,12 @@ async function leftoverDefaultsFolders(root: string): Promise<string[]> {
   return (await readdir(root)).filter((name) => name.startsWith("omp-app-config-defaults-"));
 }
 
-async function warningFor(root: string, binary: string, timeoutMs?: number): Promise<string> {
-  const { warnings } = await serverStore(root, binary, timeoutMs);
+async function warningFor(
+  root: string,
+  command: readonly string[],
+  timeoutMs?: number,
+): Promise<string> {
+  const { warnings } = await serverStore(root, command, timeoutMs);
   expect(warnings).toHaveLength(1);
   return warnings[0] ?? "";
 }
@@ -166,9 +160,14 @@ async function warningFor(root: string, binary: string, timeoutMs?: number): Pro
 describe("omp ConfigStore defaults: wrappers, isolation, cleanup and causes", () => {
   test("a wrapper whose child keeps the output open cannot hold startup past the timeout", async () => {
     const root = await temporaryRoot();
-    const binary = await fakeOmp(root, `${LIST_GUARD}\n/bin/sleep 3`);
+    // The stand-in waits on a child of its own that shares its output, as a wrapper script running omp does.
+    const command = await fakeOmp(
+      root,
+      `${LIST_GUARD}
+await Bun.spawn([process.execPath, "-e", "await Bun.sleep(3000)"], { stdio: ["ignore", "inherit", "inherit"] }).exited;`,
+    );
     const started = Date.now();
-    const { store, warnings } = await serverStore(root, binary, 200);
+    const { store, warnings } = await serverStore(root, command, 200);
     expect(Date.now() - started).toBeLessThan(2_000);
     expect(warnings).toEqual([expect.stringContaining("timed out after 200 ms")]);
     await expectNotFound(store, "model");
@@ -179,9 +178,17 @@ describe("omp ConfigStore defaults: wrappers, isolation, cleanup and causes", ()
     const previous = process.env.OMP_APP_PROBE_SECRET;
     process.env.OMP_APP_PROBE_SECRET = "must-not-leak";
     try {
-      const probe = String.raw`printf '{"probe.home":{"value":"%s"},"probe.agent":{"value":"%s"},"probe.temp":{"value":"%s"},"probe.cwd":{"value":"%s"},"probe.configDir":{"value":"%s"},"probe.leak":{"value":"%s"}}\n' "$HOME" "$PI_CODING_AGENT_DIR" "$TMPDIR" "$(pwd)" "$PI_CONFIG_DIR" "$OMP_APP_PROBE_SECRET"`;
-      const binary = await fakeOmp(root, `${LIST_GUARD}\n${probe}`);
-      const { store, warnings } = await serverStore(root, binary);
+      const probe = `const env = (name: string) => ({ value: process.env[name] ?? "" });
+console.log(JSON.stringify({
+  "probe.home": env("HOME"),
+  "probe.agent": env("PI_CODING_AGENT_DIR"),
+  "probe.temp": env("TMPDIR"),
+  "probe.cwd": { value: process.cwd() },
+  "probe.configDir": env("PI_CONFIG_DIR"),
+  "probe.leak": env("OMP_APP_PROBE_SECRET"),
+}));`;
+      const command = await fakeOmp(root, `${LIST_GUARD}\n${probe}`);
+      const { store, warnings } = await serverStore(root, command);
       expect(warnings).toEqual([]);
       const home = await probeValue(store, "probe.home");
       expect(typeof home).toBe("string");
@@ -203,53 +210,60 @@ describe("omp ConfigStore defaults: wrappers, isolation, cleanup and causes", ()
     const root = await temporaryRoot();
     await serverStore(
       root,
-      await fakeOmp(root, `${LIST_GUARD}\nprintf '{"model":{"value":"x"}}\\n'`),
+      await fakeOmp(root, `${LIST_GUARD}\n${print('{"model":{"value":"x"}}')}`),
     );
-    await serverStore(root, await fakeOmp(root, `${LIST_GUARD}\nexit 1`));
+    await serverStore(root, await fakeOmp(root, `${LIST_GUARD}\nprocess.exit(1);`));
     // A deadline of zero leaves no time for a retry, so this checks the folder of the one run.
-    await serverStore(root, await fakeOmp(root, `${LIST_GUARD}\nexec /bin/sleep 3`), 100, {
+    await serverStore(root, await fakeOmp(root, `${LIST_GUARD}\nawait Bun.sleep(3_000);`), 100, {
       patientDeadlineMs: 0,
     });
     expect(await leftoverDefaultsFolders(root)).toEqual([]);
   });
 
-  test("keeps the defaults that loaded when only the temporary folder cannot be removed", async () => {
-    const root = await temporaryRoot();
-    // omp makes its own folder read-only before it exits, so the folder's entries cannot be removed.
-    const binary = await fakeOmp(
-      root,
-      `${LIST_GUARD}\nprintf '{"model":{"value":"omp-default"}}\\n'\nchmod 555 "$(pwd)"`,
-    );
-    try {
-      const { store, warnings } = await serverStore(root, binary);
-      expect(await probeValue(store, "model")).toBe("omp-default");
-      expect(warnings).toEqual([expect.stringContaining("could not be removed")]);
-    } finally {
-      for (const name of await leftoverDefaultsFolders(root)) {
-        await chmod(join(root, name), 0o755);
+  // A folder made read-only by its mode keeps its entries only where modes rule removal; Windows has no such mode.
+  test.skipIf(process.platform === "win32")(
+    "keeps the defaults that loaded when only the temporary folder cannot be removed",
+    async () => {
+      const root = await temporaryRoot();
+      // omp makes its own folder read-only before it exits, so the folder's entries cannot be removed.
+      const command = await fakeOmp(
+        root,
+        `import { chmodSync } from "node:fs";
+${LIST_GUARD}
+${print('{"model":{"value":"omp-default"}}')}
+chmodSync(process.cwd(), 0o555);`,
+      );
+      try {
+        const { store, warnings } = await serverStore(root, command);
+        expect(await probeValue(store, "model")).toBe("omp-default");
+        expect(warnings).toEqual([expect.stringContaining("could not be removed")]);
+      } finally {
+        for (const name of await leftoverDefaultsFolders(root)) {
+          await chmod(join(root, name), 0o755);
+        }
       }
-    }
-  });
+    },
+  );
 
   test("the warning says why the defaults did not load", async () => {
     const root = await temporaryRoot();
-    expect(await warningFor(root, join(root, "no-such-omp"))).toContain("could not be started");
-    expect(await warningFor(root, await fakeOmp(root, `${LIST_GUARD}\nexit 3`))).toContain(
-      "exited with code 3",
-    );
+    expect(await warningFor(root, [join(root, "no-such-omp")])).toContain("could not be started");
     expect(
-      await warningFor(root, await fakeOmp(root, `${LIST_GUARD}\nexec /bin/sleep 3`), 200),
+      await warningFor(root, await fakeOmp(root, `${LIST_GUARD}\nprocess.exit(3);`)),
+    ).toContain("exited with code 3");
+    expect(
+      await warningFor(root, await fakeOmp(root, `${LIST_GUARD}\nawait Bun.sleep(3_000);`), 200),
     ).toContain("timed out after 200 ms");
     expect(
       await warningFor(
         root,
-        await fakeOmp(root, `${LIST_GUARD}\nprintf 'a banner line\\n{"model":{"value":"x"}}\\n'`),
+        await fakeOmp(root, `${LIST_GUARD}\n${print('a banner line\n{"model":{"value":"x"}}')}`),
       ),
     ).toContain("not valid JSON");
     expect(
       await warningFor(
         root,
-        await fakeOmp(root, `${LIST_GUARD}\nprintf '{"model":"omp-default"}\\n'`),
+        await fakeOmp(root, `${LIST_GUARD}\n${print('{"model":"omp-default"}')}`),
       ),
     ).toContain("unexpected shape");
   });
@@ -281,6 +295,15 @@ async function untilOsEvent(condition: () => boolean | Promise<boolean>): Promis
   }
 }
 
+/** A stand-in whose first run takes 30 s and whose later runs print `answer` at once; it counts its runs in `runs`. */
+function slowFirstRun(runs: string, answer: string): string {
+  return `import { appendFileSync, readFileSync } from "node:fs";
+${LIST_GUARD}
+appendFileSync(${JSON.stringify(runs)}, "run\\n");
+if (readFileSync(${JSON.stringify(runs)}, "utf8").trim().split("\\n").length <= 1) await Bun.sleep(30_000);
+${print(answer)}`;
+}
+
 describe("omp ConfigStore defaults: a slow first run", () => {
   test("a first run that runs out of time is asked again; the defaults reach the store and subscribers", async () => {
     const root = await temporaryRoot();
@@ -289,16 +312,11 @@ describe("omp ConfigStore defaults: a slow first run", () => {
     await writeFile(join(agent, "config.yml"), "model: user-value\n", "utf8");
     const runs = join(root, "runs");
     // A cold first run is slow; the run after it answers at once.
-    const binary = await fakeOmp(
+    const command = await fakeOmp(
       root,
-      [
-        LIST_GUARD,
-        `echo run >> "${runs}"`,
-        `if [ "$(wc -l < "${runs}")" -le 1 ]; then exec /bin/sleep 30; fi`,
-        `printf '%s\\n' '{"model":{"value":"omp-default"},"compaction.enabled":{"value":false}}'`,
-      ].join("\n"),
+      slowFirstRun(runs, '{"model":{"value":"omp-default"},"compaction.enabled":{"value":false}}'),
     );
-    const { store, warnings } = await serverStore(root, binary, 50, { patientTimeoutMs: 5_000 });
+    const { store, warnings } = await serverStore(root, command, 50, { patientTimeoutMs: 5_000 });
     const changes: ConfigChanged[] = [];
     const firstChange = Promise.withResolvers<void>();
     store.subscribe(null, (change) => {
@@ -324,16 +342,8 @@ describe("omp ConfigStore defaults: a slow first run", () => {
   test("an empty retry keeps the registry unavailable and is asked after the first timeout", async () => {
     const root = await temporaryRoot();
     const runs = join(root, "runs-empty");
-    const binary = await fakeOmp(
-      root,
-      [
-        LIST_GUARD,
-        `echo run >> "${runs}"`,
-        `if [ "$(wc -l < "${runs}")" -le 1 ]; then exec /bin/sleep 30; fi`,
-        `printf '%s\\n' '{}'`,
-      ].join("\n"),
-    );
-    const { store } = await serverStore(root, binary, 50, {
+    const command = await fakeOmp(root, slowFirstRun(runs, "{}"));
+    const { store } = await serverStore(root, command, 50, {
       patientTimeoutMs: 5_000,
       patientDeadlineMs: 20_000,
     });
@@ -346,9 +356,9 @@ describe("omp ConfigStore defaults: a slow first run", () => {
   // and in a loaded full run this test once took 5.5 s, past bun's 5 s default for every test (issue #1538).
   test("a retry that also runs out of time gives up and says why", async () => {
     const root = await temporaryRoot();
-    const binary = await fakeOmp(root, `${LIST_GUARD}\nexec /bin/sleep 30`);
+    const command = await fakeOmp(root, `${LIST_GUARD}\nawait Bun.sleep(30_000);`);
     const gaveUp = Promise.withResolvers<string>();
-    const { store, warnings } = await serverStore(root, binary, 50, {
+    const { store, warnings } = await serverStore(root, command, 50, {
       patientTimeoutMs: 100,
       patientDeadlineMs: 400,
       onWarning: (message) => {
@@ -368,8 +378,14 @@ describe("omp ConfigStore defaults: a slow first run", () => {
     const root = await temporaryRoot();
     const pids = join(root, "pids");
     // Every run records its process id, then waits far longer than this test.
-    const binary = await fakeOmp(root, `${LIST_GUARD}\necho $$ >> "${pids}"\nexec /bin/sleep 60`);
-    const { store } = await serverStore(root, binary, 50, {
+    const command = await fakeOmp(
+      root,
+      `import { appendFileSync } from "node:fs";
+${LIST_GUARD}
+appendFileSync(${JSON.stringify(pids)}, \`\${process.pid}\\n\`);
+await Bun.sleep(60_000);`,
+    );
+    const { store } = await serverStore(root, command, 50, {
       patientTimeoutMs: 60_000,
       patientDeadlineMs: 120_000,
     });

@@ -64,7 +64,7 @@ async function startServer(): Promise<{ server: CompositionServer; folder: Folde
     mkdir(join(folder, "notes"), { recursive: true }),
   ]);
   await writeFile(join(folder, "notes", "plan.md"), "# Plan\n");
-  const ompBin = join(root, "fake-omp");
+  const ompBin = join(root, "fake-omp.ts");
   await writeFile(ompBin, FAKE_OMP, { mode: 0o755 });
   await chmod(ompBin, 0o755);
   const server = await createCompositionServer({

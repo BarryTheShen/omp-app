@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { UsageLimitsResult } from "@omp-app/contracts";
+import {
+  type FakeProgram,
+  runsFileOf,
+  writeFakeProgram,
+} from "../../../test-fixtures/fake-program";
 import { UsageLimitStoreService } from "./usage-limits";
 
 const directories: string[] = [];
@@ -13,13 +18,11 @@ afterEach(async () => {
   );
 });
 
-/** A stand-in for omp: a shell script that runs `body` in place of `omp usage`. */
-async function fakeOmp(body: string): Promise<string> {
+/** A stand-in for omp, doing `does` in place of `omp usage`; the command that starts it. */
+async function fakeOmp(does: FakeProgram): Promise<string[]> {
   const directory = await mkdtemp(join(tmpdir(), "omp-app-usage-limits-"));
   directories.push(directory);
-  const binary = join(directory, "omp");
-  await writeFile(binary, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
-  return binary;
+  return writeFakeProgram(directory, "omp", does);
 }
 
 const PATH = process.env.PATH ?? "/usr/bin:/bin";
@@ -98,7 +101,7 @@ const usageJson = JSON.stringify({
 describe("the provider usage limits omp reports", () => {
   test("summarises each provider's windows: the fullest account's share and reset, how many accounts report it, its length, and with two or more accounts their shares added up and each account by its email as omp shows it, nothing else of theirs", async () => {
     const service = new UsageLimitStoreService({
-      command: [await fakeOmp(`cat <<'EOF'\n${usageJson}\nEOF`)],
+      command: await fakeOmp({ stdout: usageJson }),
       env: { PATH },
       now: () => 1_000,
     });
@@ -196,7 +199,7 @@ describe("the provider usage limits omp reports", () => {
       ],
     });
     const service = new UsageLimitStoreService({
-      command: [await fakeOmp(`cat <<'EOF'\n${unnamed}\nEOF`)],
+      command: await fakeOmp({ stdout: unnamed }),
       env: { PATH },
       now: () => 1_000,
     });
@@ -208,7 +211,7 @@ describe("the provider usage limits omp reports", () => {
 
   test("says why when omp does not answer within the deadline, and stops it", async () => {
     const service = new UsageLimitStoreService({
-      command: [await fakeOmp("sleep 5")],
+      command: await fakeOmp({ sleepMs: 5_000 }),
       env: { PATH },
       timeoutMs: 2_000,
     });
@@ -221,7 +224,7 @@ describe("the provider usage limits omp reports", () => {
 
   test("says why when omp stops with an error, and never shows what it wrote to stderr", async () => {
     const service = new UsageLimitStoreService({
-      command: [await fakeOmp("echo 'token sk-secret-value' >&2\nexit 3")],
+      command: await fakeOmp({ stderr: "token sk-secret-value", exitCode: 3 }),
       env: { PATH },
     });
 
@@ -233,7 +236,7 @@ describe("the provider usage limits omp reports", () => {
 
   test("says why when omp's output is not JSON", async () => {
     const service = new UsageLimitStoreService({
-      command: [await fakeOmp("echo 'not json at all'")],
+      command: await fakeOmp({ stdout: "not json at all" }),
       env: { PATH },
     });
 
@@ -245,7 +248,7 @@ describe("the provider usage limits omp reports", () => {
 
   test("says why when the output has no reports list in a form the app reads", async () => {
     const service = new UsageLimitStoreService({
-      command: [await fakeOmp("echo '{\"generatedAt\": 1}'")],
+      command: await fakeOmp({ stdout: '{"generatedAt": 1}' }),
       env: { PATH },
     });
 
@@ -256,15 +259,13 @@ describe("the provider usage limits omp reports", () => {
   });
 
   test("reuses a read for a minute, and concurrent reads share one omp run", async () => {
-    // The script counts its own runs in the directory it lives in ($0), so the counter needs no setup.
-    const binary = await fakeOmp(
-      `echo run >> "$(dirname "$0")/runs.txt"\ncat <<'EOF'\n${usageJson}\nEOF`,
-    );
-    const counter = join(dirname(binary), "runs.txt");
+    // The stand-in counts its own runs in its folder, so the counter needs no setup.
+    const command = await fakeOmp({ stdout: usageJson, countRuns: true });
+    const counter = runsFileOf(command);
     const runs = async () => (await readFile(counter, "utf8")).trim().split("\n").length;
     let now = 1_000;
     const service = new UsageLimitStoreService({
-      command: [binary],
+      command,
       env: { PATH },
       now: () => now,
       cacheMs: 60_000,
@@ -279,14 +280,12 @@ describe("the provider usage limits omp reports", () => {
   });
 
   test("a read over a minute old answers at once while a fresh one goes to every subscriber; one past ten minutes waits for omp", async () => {
-    const binary = await fakeOmp(
-      `echo run >> "$(dirname "$0")/runs.txt"\ncat <<'EOF'\n${usageJson}\nEOF`,
-    );
-    const counter = join(dirname(binary), "runs.txt");
+    const command = await fakeOmp({ stdout: usageJson, countRuns: true });
+    const counter = runsFileOf(command);
     const runs = async () => (await readFile(counter, "utf8")).trim().split("\n").length;
     let now = 1_000;
     const service = new UsageLimitStoreService({
-      command: [binary],
+      command,
       env: { PATH },
       now: () => now,
       cacheMs: 60_000,
@@ -314,7 +313,7 @@ describe("the provider usage limits omp reports", () => {
   test("a failed read is not shown again after its minute: the next read waits for omp", async () => {
     let now = 1_000;
     const service = new UsageLimitStoreService({
-      command: [await fakeOmp("exit 3")],
+      command: await fakeOmp({ exitCode: 3 }),
       env: { PATH },
       now: () => now,
       cacheMs: 60_000,
@@ -339,7 +338,7 @@ describe("the provider usage limits omp reports", () => {
 
   test("a page's fresh read goes to every subscriber; a reused one does not (#2781)", async () => {
     const service = new UsageLimitStoreService({
-      command: [await fakeOmp(`cat <<'EOF'\n${usageJson}\nEOF`)],
+      command: await fakeOmp({ stdout: usageJson }),
       env: { PATH },
       now: () => 1_000,
     });
@@ -372,7 +371,7 @@ describe("the provider usage limits omp reports", () => {
     });
     const watched = async (json: string) => {
       const service = new UsageLimitStoreService({
-        command: [await fakeOmp(`cat <<'EOF'\n${json}\nEOF`)],
+        command: await fakeOmp({ stdout: json }),
         env: { PATH },
         // The test's minutes: 150 ms for the usual pace, 10 ms near a limit.
         watchMs: 150,

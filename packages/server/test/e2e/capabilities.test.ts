@@ -59,7 +59,7 @@ async function temporaryRoot(prefix: string): Promise<string> {
 }
 
 async function fakeOmp(root: string): Promise<string> {
-  const path = join(root, "fake-omp");
+  const path = join(root, "fake-omp.ts");
   await writeFile(path, FAKE_OMP, { mode: 0o755 });
   await chmod(path, 0o755);
   return path;

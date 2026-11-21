@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { AppFailure, ThreadId } from "@omp-app/contracts";
 import { SessionPinStoreService } from "./session-pin-store";
 
@@ -48,7 +48,8 @@ afterEach(async () => {
 
 describe("SessionPinStoreService", () => {
   test("resolves omp's agent directory from an isolated home, profile, and override", () => {
-    const home = "/isolated-pins-home";
+    // A full path where the tests run (`D:\isolated-pins-home` on Windows), as the store resolves it.
+    const home = resolve("/isolated-pins-home");
     const defaultStore = new SessionPinStoreService({ homeDir: home, env: {} });
     expect(defaultStore.agentDir).toBe(join(home, ".omp", "agent"));
     expect(defaultStore.filePath).toBe(join(home, ".omp", "agent", "session-pins.json"));
@@ -96,7 +97,7 @@ describe("SessionPinStoreService", () => {
     });
 
     expect(await readFile(store.filePath, "utf8")).toBe('[\n\t"session-one"\n]');
-    expect((await stat(store.filePath)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(store.filePath)).mode & 0o777).toBe(0o600);
     expect(pinned).toMatchObject({ sessionId, pinned: true });
 
     const listed = await store.list();

@@ -25,12 +25,21 @@ export function hostsFolder(appDataDir: string, env: Env): string {
 
 /**
  * Whether a hosts folder is this user's alone: a real folder (no link), owned by this user, that no one else may enter.
- * A folder another user made, or opened, could hold a socket that is not a host of this server's.
+ * A folder another user made, or opened, could hold a socket that is not a host of this server's. Windows has no owner
+ * id or mode bits to read: there the folder must be a real folder directly in the user's own temporary folder
+ * (`…\AppData\Local\Temp`), whose access list admits only that user (and the system's administrators), and which the
+ * folders made in it inherit.
  */
-export function hostsFolderIsPrivate(folder: string): boolean {
+export function hostsFolderIsPrivate(
+  folder: string,
+  platform: NodeJS.Platform = process.platform,
+): boolean {
   try {
     const found = lstatSync(folder);
-    return found.isDirectory() && found.uid === process.getuid?.() && (found.mode & 0o077) === 0;
+    if (!found.isDirectory()) return false;
+    if (platform === "win32")
+      return resolve(folder, "..").toLowerCase() === resolve(tmpdir()).toLowerCase();
+    return found.uid === process.getuid?.() && (found.mode & 0o077) === 0;
   } catch {
     return false;
   }

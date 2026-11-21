@@ -22,12 +22,24 @@ export interface ChatCommandOptions extends OmpCommandOptions {
 }
 
 /**
+ * The program to start for `binary`: itself, or, on Windows, a script (`.ts`, `.js`) under the Bun that runs the server,
+ * since Windows runs no script by its `#!` line. A compiled server is given compiled programs, which start as they are.
+ */
+export function programOf(binary: string, platform: NodeJS.Platform = process.platform): string[] {
+  return platform === "win32" && /\.(ts|js|mjs|cjs)$/i.test(binary)
+    ? [process.execPath, binary]
+    : [binary];
+}
+
+/**
  * omp's own command line, from the omp package the app pins (#2586, SDK plan): the program and leading arguments, before
  * omp's own arguments. The compiled chat host hands them to omp's command line (`src/chat-host/main.ts`). It answers
  * omp's commands (`--version`, `models`, `usage`, `config`); chats run on `chatHostCommand`.
  */
 export function ompCommand(options: OmpCommandOptions = {}): readonly string[] {
-  return options.binary === undefined ? [process.execPath, ompCommandLine()] : [options.binary];
+  return options.binary === undefined
+    ? [process.execPath, ompCommandLine()]
+    : programOf(options.binary);
 }
 
 /**
@@ -37,9 +49,9 @@ export function ompCommand(options: OmpCommandOptions = {}): readonly string[] {
  */
 export function chatHostCommand(options: ChatCommandOptions = {}): readonly string[] {
   const program =
-    options.binary === undefined ? [process.execPath, chatHostEntry()] : [options.binary];
+    options.binary === undefined ? [process.execPath, chatHostEntry()] : programOf(options.binary);
   const command = [...program, CHAT_HOST_CHAT_ARG];
-  return options.wrapper === undefined ? command : [options.wrapper, ...command];
+  return options.wrapper === undefined ? command : [...programOf(options.wrapper), ...command];
 }
 
 /** The chat host's entry (`src/chat-host/main.ts`), as a source checkout has it. */

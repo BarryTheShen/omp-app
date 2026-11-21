@@ -35,16 +35,20 @@ export async function readHostMetadata(
 }
 
 async function validateFolder(folder: string): Promise<string> {
+  // A drive path (`C:\…`) is a full path only on Windows; elsewhere it names a folder relative to the server's own.
+  const windows = process.platform === "win32";
   if (
     typeof folder !== "string" ||
     folder.length === 0 ||
     !isAbsolute(folder) ||
-    WINDOWS_ABSOLUTE_PATH.test(folder) ||
+    (!windows && WINDOWS_ABSOLUTE_PATH.test(folder)) ||
     folder.includes("\0")
   ) {
     throw new AppFailure({
       code: "invalid_args",
-      message: "Enter a folder path that starts with /.",
+      message: windows
+        ? "Enter a full folder path, such as C:\\Users\\you\\project."
+        : "Enter a folder path that starts with /.",
       retryable: false,
     });
   }
@@ -66,7 +70,8 @@ function displayFolderPath(folder: string, home: string): string {
   if (isRelativePath(fromHome)) {
     return `~/${fromHome.split(sep).join("/")}`;
   }
-  return folder.split(sep).join("/");
+  // Outside the home folder, the path as the system writes it (`D:\work` on Windows).
+  return folder;
 }
 
 function isRelativePath(path: string): boolean {

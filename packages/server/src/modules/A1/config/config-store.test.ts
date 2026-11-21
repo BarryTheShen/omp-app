@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { AppFailure, type ConfigChanged } from "@omp-app/contracts";
 import { ConfigStoreService, createConfigStore } from "./config-store";
 
@@ -117,7 +117,8 @@ describe("ConfigStoreService", () => {
     store.dispose();
   });
   test("resolves the injected omp profile and app-data environment paths", () => {
-    const root = "/config-store-home";
+    // A full path where the tests run (`D:\config-store-home` on Windows), as the store resolves it.
+    const root = resolve("/config-store-home");
     const store = new ConfigStoreService({
       homeDir: root,
       env: { OMP_PROFILE: "work", OMP_APP_DATA_DIR: "~/app-data" },

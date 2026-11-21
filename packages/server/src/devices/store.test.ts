@@ -27,7 +27,7 @@ describe("the paired devices", () => {
     const text = await readFile(store.filePath, "utf8");
     expect(text).not.toContain(key);
     expect(text).toContain(deviceKeyHash(key));
-    expect((await stat(store.filePath)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(store.filePath)).mode & 0o777).toBe(0o600);
 
     const again = await DeviceStore.open({ appDataDir: dir });
     expect(again.deviceForKey(key)).toMatchObject({

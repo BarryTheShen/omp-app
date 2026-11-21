@@ -20,7 +20,7 @@ import {
 } from "./index";
 
 const DATA = join(import.meta.dir, "../../../../.data");
-const FIXTURES = new URL("../test-fixtures", import.meta.url).pathname;
+const FIXTURES = join(import.meta.dir, "..", "test-fixtures");
 const REMOTE = { origin: "https://devbox.tail1234.ts.net", host: "devbox.tail1234.ts.net" };
 const roots: string[] = [];
 const apps: AppServer[] = [];

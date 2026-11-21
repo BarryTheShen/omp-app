@@ -384,8 +384,15 @@ export function createChatIndex(options: ChatIndexOptions): ChatSearchIndex & {
       closed = true;
       clearTimeout(timer);
       timer = undefined;
-      // A run going on stops after its chat; the file closes after it.
-      void (running ?? Promise.resolve()).catch(() => {}).finally(() => db.close());
+      // A run going on stops after its chat; the file closes after it. SQLite keeps the file open while a prepared
+      // statement lives (Windows then cannot remove it), so the two this index prepared are finalized first.
+      void (running ?? Promise.resolve())
+        .catch(() => {})
+        .finally(() => {
+          insert.finalize();
+          upsertFile.finalize();
+          db.close();
+        });
     },
     runOnce: () => runOnce(),
   };

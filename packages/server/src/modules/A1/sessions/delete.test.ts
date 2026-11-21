@@ -352,7 +352,8 @@ describe("SessionFileStore.deleteSession", () => {
     }
   });
 
-  test.skipIf(process.getuid?.() === 0)(
+  // A mode that refuses removal binds neither root nor anyone on Windows, whose folders follow their access lists.
+  test.skipIf(process.getuid?.() === 0 || process.platform === "win32")(
     "deletes the chat even when one of its artifacts cannot be removed: the delete succeeds, and the artifacts stay, reported",
     async () => {
       const root = await makeTempRoot();

@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { AppFailure, FolderPath, ThreadId } from "@omp-app/contracts";
+import { programOf } from "../omp-host/chat-command";
 import type { ProcessTimer } from "./omp-process";
 import {
   homeFolderArguments,
@@ -190,7 +191,7 @@ describe("OmpProcess spawn and stdio", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         env: isolatedEnv({ FAKE_OMP_PASSTHROUGH_CHECK: "isolated-value" }),
       }),
     );
@@ -202,8 +203,11 @@ describe("OmpProcess spawn and stdio", () => {
     expect(process.status).toBe("running");
     expect(process.pid).toBeGreaterThan(0);
     expect(process.processId).toBeDefined();
-    // The process reports its folder's real path: on macOS the temporary folder is under a link (/var → /private/var).
-    expect(notice).toMatchObject({ cwd: await realpath(folder), echoedEnv: "isolated-value" });
+    // The same folder can be written two ways: on macOS under a link (/var → /private/var), on Windows by its short
+    // name (RUNNER~1): both sides are compared as real paths.
+    expect(notice).toMatchObject({ echoedEnv: "isolated-value" });
+    const reported = (notice as { cwd?: unknown }).cwd;
+    expect(await realpath(String(reported))).toBe(await realpath(folder));
   });
   test("adds an app-owned usage-reset overlay after configured overlays", async () => {
     const folder = await temporaryFolder();
@@ -213,7 +217,7 @@ describe("OmpProcess spawn and stdio", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         env: isolatedEnv({ PI_CONFIG_FILES: configured }),
       }),
     );
@@ -238,7 +242,7 @@ describe("OmpProcess spawn and stdio", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         env: isolatedEnv({ OMP_APP_DATA_DIR: appData }),
       }),
     );
@@ -260,7 +264,7 @@ describe("OmpProcess spawn and stdio", () => {
           threadId,
           folder,
           homeDir: folder,
-          chatCommand: [FAKE_OMP],
+          chatCommand: programOf(FAKE_OMP),
           env: isolatedEnv(),
         }),
       );
@@ -286,7 +290,7 @@ describe("OmpProcess spawn and stdio", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         env: isolatedEnv(),
       }),
     );
@@ -307,7 +311,7 @@ describe("OmpProcess spawn and stdio", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         env: isolatedEnv({ OMP_APP_DATA_DIR: appData }),
       }),
     );
@@ -332,7 +336,7 @@ describe("OmpProcess spawn and stdio", () => {
           threadId,
           folder,
           homeDir: folder,
-          chatCommand: [FAKE_OMP],
+          chatCommand: programOf(FAKE_OMP),
           env: isolatedEnv({ OMP_APP_DATA_DIR: appData }),
         }),
       );
@@ -351,7 +355,7 @@ describe("OmpProcess spawn and stdio", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         env: isolatedEnv(),
       }),
     );
@@ -376,7 +380,7 @@ describe("OmpProcess spawn and stdio", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         env: isolatedEnv(),
       }),
     );
@@ -424,7 +428,7 @@ describe("OmpProcess shutdown", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         env: isolatedEnv(),
       }),
     );
@@ -451,7 +455,7 @@ describe("OmpProcess shutdown", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         env: isolatedEnv({ FAKE_OMP_IGNORE_SIGTERM: "1" }),
         terminationGraceMs: 25,
         timer,
@@ -479,7 +483,7 @@ describe("OmpProcess shutdown", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         env: isolatedEnv(),
         terminationGraceMs: 25,
         timer,
@@ -511,7 +515,7 @@ describe("OmpProcess crash handling", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         env: isolatedEnv({
           FAKE_OMP_EXIT_CODE: "9",
           FAKE_OMP_STDERR: "diagnostic: fixture crash",
@@ -544,7 +548,7 @@ describe("OmpProcess crash handling", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         env: isolatedEnv({
           FAKE_OMP_EXIT_CODE: "3",
           FAKE_OMP_STDERR: `error: provider rejected key ${key}`,
@@ -566,7 +570,7 @@ describe("OmpProcess crash handling", () => {
         threadId,
         folder,
         homeDir: folder,
-        chatCommand: [FAKE_OMP],
+        chatCommand: programOf(FAKE_OMP),
         maxStderrBytes: 2500,
         env: isolatedEnv({ FAKE_OMP_EXIT_CODE: "1", FAKE_OMP_STDERR: head + tail }),
       }),

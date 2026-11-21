@@ -78,7 +78,7 @@ describe("SummaryCache", () => {
       first.put(entryFor(chat));
       await first.flush();
 
-      expect((await stat(file)).mode & 0o777).toBe(0o600);
+      if (process.platform !== "win32") expect((await stat(file)).mode & 0o777).toBe(0o600);
       const second = quietCache(file, errors);
       await second.ready();
       expect(second.get(chat)).toEqual(entryFor(chat));

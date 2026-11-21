@@ -97,8 +97,9 @@ describe("openHostSocket", () => {
 
   test("the socket and its folder are the user's alone; closing ends the lines and removes the socket", async () => {
     const { path, host } = await open();
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
-    expect((await stat(join(folder, "hosts"))).mode & 0o777).toBe(0o700);
+    if (process.platform !== "win32") expect((await stat(path)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32")
+      expect((await stat(join(folder, "hosts"))).mode & 0o777).toBe(0o700);
     const reader = host.lines[Symbol.asyncIterator]();
     const pending = reader.next();
     await host.close();

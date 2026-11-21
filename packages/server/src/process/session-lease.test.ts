@@ -46,17 +46,21 @@ describe("leaseSocketName", () => {
 });
 
 describe("ompSessionOwnersDir", () => {
+  // Built as the system writes paths: `/fixture/home/...` on Linux and macOS, `D:\fixture\home\...` on Windows.
+  const home = "/fixture/home";
   test("is run/session-owners under the home directory, with omp's config directory name", () => {
-    expect(ompSessionOwnersDir({}, "/fixture/home")).toBe("/fixture/home/.omp/run/session-owners");
-    expect(ompSessionOwnersDir({ PI_CONFIG_DIR: ".alt" }, "/fixture/home")).toBe(
-      "/fixture/home/.alt/run/session-owners",
+    expect(ompSessionOwnersDir({}, home)).toBe(
+      join(resolve(home), ".omp", "run", "session-owners"),
+    );
+    expect(ompSessionOwnersDir({ PI_CONFIG_DIR: ".alt" }, home)).toBe(
+      join(resolve(home), ".alt", "run", "session-owners"),
     );
   });
 
   test("uses the XDG state root only when omp's own state root exists under it", () => {
     const xdg = "/fixture/xdg-state-that-does-not-exist";
-    expect(ompSessionOwnersDir({ XDG_STATE_HOME: xdg }, "/fixture/home")).toBe(
-      "/fixture/home/.omp/run/session-owners",
+    expect(ompSessionOwnersDir({ XDG_STATE_HOME: xdg }, home)).toBe(
+      join(resolve(home), ".omp", "run", "session-owners"),
     );
   });
 });

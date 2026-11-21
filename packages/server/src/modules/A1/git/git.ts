@@ -1,5 +1,5 @@
 import { access, constants } from "node:fs/promises";
-import { delimiter, isAbsolute, resolve } from "node:path";
+import { isAbsolute, normalize, resolve } from "node:path";
 import { AppFailure } from "@omp-app/contracts";
 
 export const DEFAULT_GIT_TIMEOUT_MS = 5_000;
@@ -256,7 +256,7 @@ async function readWorkspaceStateInner(
         stderr: "git returned an empty repository root",
       });
     }
-    root = isAbsolute(rootValue) ? rootValue : resolve(path, rootValue);
+    root = isAbsolute(rootValue) ? fromGitPath(rootValue) : resolve(path, rootValue);
   }
 
   const status = isBare ? null : await readStatus(run);
@@ -374,7 +374,7 @@ async function runGit(
   }
   env.GIT_OPTIONAL_LOCKS = "0";
 
-  const command = await resolveGitBinary(options.gitBinary ?? "git", env.PATH, cwd);
+  const command = await resolveGitBinary(options.gitBinary ?? "git", searchPath(env), cwd);
   if (command === null) {
     const cause = new Error("git executable was not found");
     return {
@@ -440,27 +440,35 @@ async function runGit(
   return { kind: "exit", exitCode, stdout, stderr: outputError };
 }
 
+/** A path as Git prints it, in the system's own form: Git for Windows writes `D:/a/b` for `D:\a\b`. */
+function fromGitPath(value: string): string {
+  return process.platform === "win32" ? normalize(value) : value;
+}
+
+/** The program search path: `PATH`, which Windows names `Path`. */
+function searchPath(env: Readonly<Record<string, string>>): string | undefined {
+  const key = Object.keys(env).find((name) => name.toUpperCase() === "PATH");
+  return key === undefined ? undefined : env[key];
+}
+
+/**
+ * The git to run: a path as given, or a name found on the search path. `Bun.which` finds it as the system would,
+ * `git.exe` included on Windows.
+ */
 async function resolveGitBinary(
   binary: string,
   pathValue: string | undefined,
   cwd: string,
 ): Promise<string | null> {
-  const candidates =
-    isAbsolute(binary) || binary.includes("/")
-      ? [isAbsolute(binary) ? binary : resolve(cwd, binary)]
-      : (pathValue ?? "")
-          .split(delimiter)
-          .filter((directory) => directory.length > 0)
-          .map((directory) => resolve(directory, binary));
-  for (const candidate of candidates) {
-    try {
-      await access(candidate, constants.X_OK);
-      return candidate;
-    } catch {
-      // Inaccessible PATH entries are not candidates; continue with the next one.
-    }
+  if (!isAbsolute(binary) && !/[\\/]/.test(binary))
+    return Bun.which(binary, { PATH: pathValue ?? "", cwd });
+  const candidate = isAbsolute(binary) ? binary : resolve(cwd, binary);
+  try {
+    await access(candidate, constants.X_OK);
+    return candidate;
+  } catch {
+    return null;
   }
-  return null;
 }
 
 async function streamText(
@@ -802,7 +810,7 @@ function parseWorktrees(output: string, nulDelimited: boolean): ParsedWorktrees 
       finish();
       if (value.length === 0) return { ok: false, message: "Malformed worktree path." };
       current = {
-        path: value,
+        path: fromGitPath(value),
         head: null,
         branch: null,
         detached: false,

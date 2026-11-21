@@ -5,11 +5,12 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CHAT_HOST_PROTOCOL_VERSION } from "@omp-app/contracts/chat-host";
 import { adoptRunningHosts, handBackHosts, restartsWhenSettled } from "./detached-process";
+import { hostsFolderIsPrivate } from "./hosts-folder";
 import type { OmpProcess } from "./omp-process";
 
 const dirs: string[] = [];
@@ -126,30 +127,45 @@ describe("adoptRunningHosts", () => {
     expect(existsSync(`${dead}.log`)).toBe(false);
   });
 
-  test("attaches to nothing in a hosts folder other users may enter: one of them could have put a socket there", async () => {
+  // Mode bits decide who may enter a folder only off Windows; there the user's temporary folder's access list does.
+  test.skipIf(process.platform === "win32")(
+    "attaches to nothing in a hosts folder other users may enter: one of them could have put a socket there",
+    async () => {
+      const dir = await hostsDir();
+      const host = fakeHost(join(dir, "a.sock"));
+      const adopted: string[] = [];
+      const adopt = (process: OmpProcess, hello: { session: { id: string } }) => {
+        adopted.push(hello.session.id);
+        void process.release?.();
+      };
+      const options = {
+        hostsDir: dir,
+        protocol: CHAT_HOST_PROTOCOL_VERSION,
+        adopt,
+        handingBack: () => undefined,
+      };
+      await chmod(dir, 0o755);
+      expect(await adoptRunningHosts(options)).toEqual({ adopted: 0, handedBack: 0 });
+      expect(await handBackHosts({ hostsDir: dir, waitMs: 100 })).toEqual({
+        handedBack: 0,
+        finishing: 0,
+      });
+      expect(host.received).toEqual([]);
+      await chmod(dir, 0o700);
+      expect(await adoptRunningHosts(options)).toEqual({ adopted: 1, handedBack: 0 });
+      expect(adopted).toEqual([host.id]);
+    },
+  );
+
+  test("on Windows, trusts a hosts folder only directly in the user's own temporary folder, and never a file", async () => {
     const dir = await hostsDir();
-    const host = fakeHost(join(dir, "a.sock"));
-    const adopted: string[] = [];
-    const adopt = (process: OmpProcess, hello: { session: { id: string } }) => {
-      adopted.push(hello.session.id);
-      void process.release?.();
-    };
-    const options = {
-      hostsDir: dir,
-      protocol: CHAT_HOST_PROTOCOL_VERSION,
-      adopt,
-      handingBack: () => undefined,
-    };
-    await chmod(dir, 0o755);
-    expect(await adoptRunningHosts(options)).toEqual({ adopted: 0, handedBack: 0 });
-    expect(await handBackHosts({ hostsDir: dir, waitMs: 100 })).toEqual({
-      handedBack: 0,
-      finishing: 0,
-    });
-    expect(host.received).toEqual([]);
-    await chmod(dir, 0o700);
-    expect(await adoptRunningHosts(options)).toEqual({ adopted: 1, handedBack: 0 });
-    expect(adopted).toEqual([host.id]);
+    expect(hostsFolderIsPrivate(dir, "win32")).toBe(true);
+    const deeper = join(dir, "nested");
+    await mkdir(deeper);
+    expect(hostsFolderIsPrivate(deeper, "win32")).toBe(false);
+    const file = join(dir, "a-file");
+    await writeFile(file, "");
+    expect(hostsFolderIsPrivate(file, "win32")).toBe(false);
   });
 
   test("leaves a socket whose host says no hello (one another server holds)", async () => {

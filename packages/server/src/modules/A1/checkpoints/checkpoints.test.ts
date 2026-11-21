@@ -472,7 +472,18 @@ describe("CheckpointStore and git-ignored files", () => {
       "shadow-git",
     );
     const child = Bun.spawn({
-      cmd: ["git", "--git-dir", gitDir, "ls-tree", "-r", "-z", "--name-only", record.shadowTreeId],
+      cmd: [
+        "git",
+        "-c",
+        "core.longpaths=true",
+        "--git-dir",
+        gitDir,
+        "ls-tree",
+        "-r",
+        "-z",
+        "--name-only",
+        record.shadowTreeId,
+      ],
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -930,7 +941,8 @@ describe("CheckpointStore and git-ignored files", () => {
       await fs.writeFile(join(globalConfig, "ignore"), "*.local\n");
       await fs.writeFile(
         join(globalConfig, "gitconfig"),
-        `[core]\n\texcludesFile = ${join(globalConfig, "ignore")}\n`,
+        // Git reads a backslash in its config as an escape: the path goes in with forward slashes, which Windows takes.
+        `[core]\n\texcludesFile = ${join(globalConfig, "ignore").replaceAll("\\", "/")}\n`,
       );
       process.env.GIT_CONFIG_GLOBAL = join(globalConfig, "gitconfig");
       await fs.writeFile(join(workspace, "a.txt"), "one\n");

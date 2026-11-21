@@ -3,6 +3,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs
 import { join, resolve } from "node:path";
 import { D8_AP6_UNAVAILABLE_REASONS, FolderPath } from "@omp-app/contracts";
 import { CHAT_HOST_METHODS } from "@omp-app/contracts/chat-host";
+import { programOf } from "../omp-host/chat-command";
 import {
   type CapabilityProbeResult,
   HELLO_SOURCE,
@@ -56,7 +57,7 @@ async function temporaryDirectory(prefix: string): Promise<string> {
 
 async function fakeHost(): Promise<string> {
   const root = await temporaryDirectory("capability-probe-bin-");
-  const path = join(root, "fake-chat-host");
+  const path = join(root, "fake-chat-host.ts");
   await writeFile(path, FAKE_HOST, { mode: 0o755 });
   await chmod(path, 0o755);
   return path;
@@ -69,7 +70,7 @@ async function runProbe(
   const binary = await fakeHost();
   const result = await probeCapabilities({
     cwd: FolderPath.parse(join(root, "app-data")),
-    chatCommand: [binary],
+    chatCommand: programOf(binary),
     env: {
       ...overrides,
       HOME: join(root, "real-home"),
@@ -168,7 +169,7 @@ describe("probeCapabilities", () => {
     const binary = await fakeHost();
     const result = await probeCapabilities({
       cwd: FolderPath.parse(join(root, "app-data")),
-      chatCommand: [binary],
+      chatCommand: programOf(binary),
       env: { FAKE_NO_HELLO: "1" },
       ghBinary: join(root, "missing-gh"),
       timeoutMs: 200,
@@ -191,7 +192,7 @@ describe("probeCapabilities", () => {
     const retries: number[] = [];
     const result = await probeCapabilitiesPatiently({
       cwd: FolderPath.parse(join(root, "app-data")),
-      chatCommand: [binary],
+      chatCommand: programOf(binary),
       // The fake says hello after 300 ms: more than the first wait, well within the patient one.
       env: { FAKE_HELLO_DELAY_MS: "300" },
       ghBinary: join(root, "missing-gh"),
@@ -211,7 +212,7 @@ describe("probeCapabilities", () => {
     const retries: number[] = [];
     const result = await probeCapabilitiesPatiently({
       cwd: FolderPath.parse(join(root, "app-data")),
-      chatCommand: [binary],
+      chatCommand: programOf(binary),
       env: { FAKE_NO_HELLO: "1" },
       ghBinary: join(root, "missing-gh"),
       timeoutMs: 50,
@@ -229,7 +230,7 @@ describe("probeCapabilities", () => {
     const retries: number[] = [];
     const result = await probeCapabilitiesPatiently({
       cwd: FolderPath.parse(join(root, "app-data")),
-      chatCommand: [binary],
+      chatCommand: programOf(binary),
       env: {},
       ghBinary: join(root, "missing-gh"),
       onRetry: (waited) => retries.push(waited),

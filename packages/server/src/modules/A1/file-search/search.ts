@@ -263,11 +263,12 @@ function validateRequest(request: FileSearchRequest): { folder: string; query: s
   }
   const folder = request.folder;
   const query = request.query;
+  // A drive path (`C:\…`) is a full path only on Windows; elsewhere it names a folder relative to the server's own.
   if (
     typeof folder !== "string" ||
     folder.length === 0 ||
     !isAbsolute(folder) ||
-    WINDOWS_ABSOLUTE_PATH.test(folder) ||
+    (process.platform !== "win32" && WINDOWS_ABSOLUTE_PATH.test(folder)) ||
     folder.includes("\0")
   ) {
     throw invalidArgsFailure("The workspace folder must be an absolute path.");

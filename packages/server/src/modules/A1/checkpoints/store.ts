@@ -11,7 +11,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { delimiter, isAbsolute, join, relative, resolve } from "node:path";
 import {
   AppFailure,
   type CheckpointDiff,
@@ -106,13 +106,15 @@ async function runGit(
     GIT_INDEX_FILE: options.indexFile ?? join(gitDir, "index"),
   };
   if (options.alternateObjectDirs?.length)
-    env.GIT_ALTERNATE_OBJECT_DIRECTORIES = options.alternateObjectDirs.join(":");
+    env.GIT_ALTERNATE_OBJECT_DIRECTORIES = options.alternateObjectDirs.join(delimiter);
   else delete env.GIT_ALTERNATE_OBJECT_DIRECTORIES;
   if (args[0] !== "init") env.GIT_WORK_TREE = workspace;
   let child: ReturnType<typeof Bun.spawn>;
   try {
     child = Bun.spawn({
-      cmd: [binary, ...args],
+      // A checkpoint's objects lie deep in the app's data (thread folder, then shadow-git/objects/xx/…): past Windows'
+      // 260 characters Git for Windows fails with "Filename too long" unless told to use long paths. Elsewhere unused.
+      cmd: [binary, "-c", "core.longpaths=true", ...args],
       cwd: workspace,
       stdout: "pipe",
       stderr: "pipe",

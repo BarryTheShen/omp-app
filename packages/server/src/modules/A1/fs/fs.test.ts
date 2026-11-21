@@ -88,8 +88,8 @@ describe("app data directory", () => {
     );
 
     const directory = await ensureAppDataDir(configured);
-    const directoryMode = (await stat(directory)).mode & 0o777;
-    expect(directoryMode).toBe(0o700);
+    // Windows has no mode bits: its folders follow their access lists.
+    if (process.platform !== "win32") expect((await stat(directory)).mode & 0o777).toBe(0o700);
   });
 });
 
@@ -102,7 +102,7 @@ describe("atomic files", () => {
     expect(result.path).toBe(path);
     expect(result.hash).toBe(hashContent('{"ok":true}'));
     expect(await readFile(path, "utf8")).toBe('{"ok":true}');
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(path)).mode & 0o777).toBe(0o600);
   });
 
   test("never interleaves concurrent writers", async () => {
@@ -238,25 +238,29 @@ describe("atomic files", () => {
     expect(await temporaryFileNames(directory)).toEqual([recent]);
   });
 
-  test("a sweep skips a folder it cannot read, and still removes the stale temp files it can reach", async () => {
-    const directory = await makeTemporaryDirectory();
-    const locked = join(directory, "drafts");
-    await mkdir(locked);
-    await leaveTemporaryFile(locked, 60 * 60_000);
-    await chmod(locked, 0o000);
-    try {
-      await leaveTemporaryFile(directory, 60 * 60_000);
-      await ensureAppDataDir(directory);
-      expect(await temporaryFileNames(directory)).toEqual([]);
+  // A mode that refuses reading binds this user only off Windows, whose folders follow their access lists instead.
+  test.skipIf(process.platform === "win32")(
+    "a sweep skips a folder it cannot read, and still removes the stale temp files it can reach",
+    async () => {
+      const directory = await makeTemporaryDirectory();
+      const locked = join(directory, "drafts");
+      await mkdir(locked);
+      await leaveTemporaryFile(locked, 60 * 60_000);
+      await chmod(locked, 0o000);
+      try {
+        await leaveTemporaryFile(directory, 60 * 60_000);
+        await ensureAppDataDir(directory);
+        expect(await temporaryFileNames(directory)).toEqual([]);
 
-      await leaveTemporaryFile(directory, 60 * 60_000);
-      ensureAppDataDirSync(directory);
-      expect(await temporaryFileNames(directory)).toEqual([]);
-    } finally {
-      await chmod(locked, 0o755);
-    }
-    expect(await temporaryFileNames(locked)).toHaveLength(1);
-  });
+        await leaveTemporaryFile(directory, 60 * 60_000);
+        ensureAppDataDirSync(directory);
+        expect(await temporaryFileNames(directory)).toEqual([]);
+      } finally {
+        await chmod(locked, 0o755);
+      }
+      expect(await temporaryFileNames(locked)).toHaveLength(1);
+    },
+  );
 });
 
 /** The lock files in a folder, by name. */

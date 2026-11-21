@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { type AddressInfo, connect, createServer, type Server, type Socket } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import {
   ATTACH_POLL_MS,
   ATTACH_WAIT_MS,
@@ -230,7 +230,7 @@ describe("the one-instance record", () => {
   test("keeps the record private because its address holds the session token", async () => {
     const path = await tempFile();
     await recordInstance(path, instance);
-    expect((await stat(path)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(path)).mode & 0o777).toBe(0o600);
   });
 
   test("clears only its own record, so a newer instance's record survives", async () => {
@@ -394,17 +394,23 @@ describe("startOrAttach", () => {
 });
 
 describe("ompSearchPath", () => {
+  // Built as the system writes search paths: `/usr/bin:/bin` on Linux and macOS, with `;` and `\` on Windows.
+  const searchPath = (...folders: string[]) => folders.join(delimiter);
+  const home = join("/", "home", "u");
+  const bun = join(home, ".bun", "bin");
+  const local = join(home, ".local", "bin");
+  const usrBin = join("/", "usr", "bin");
+  const bin = join("/", "bin");
+
   test("adds the usual bun and local folders after the current path, only when they exist", () => {
-    const exists = (path: string) => path === "/home/u/.bun/bin";
-    expect(ompSearchPath("/home/u", "/usr/bin:/bin", exists)).toBe(
-      "/usr/bin:/bin:/home/u/.bun/bin",
-    );
-    expect(ompSearchPath("/home/u", undefined, exists)).toBe("/home/u/.bun/bin");
+    const exists = (path: string) => path === bun;
+    expect(ompSearchPath(home, searchPath(usrBin, bin), exists)).toBe(searchPath(usrBin, bin, bun));
+    expect(ompSearchPath(home, undefined, exists)).toBe(bun);
   });
 
   test("does not repeat a folder that is already on the path", () => {
-    expect(ompSearchPath("/home/u", "/home/u/.bun/bin:/usr/bin", () => true)).toBe(
-      "/home/u/.bun/bin:/usr/bin:/home/u/.local/bin",
+    expect(ompSearchPath(home, searchPath(bun, usrBin), () => true)).toBe(
+      searchPath(bun, usrBin, local),
     );
   });
 });

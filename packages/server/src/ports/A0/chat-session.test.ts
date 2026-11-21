@@ -19,21 +19,28 @@ import {
   type UsageLimitsResult,
 } from "@omp-app/contracts";
 import { CHAT_HOST_METHODS } from "@omp-app/contracts/chat-host";
+import type { Logger } from "../../logging";
 import {
   type OmpProcess,
   type OmpProcessEvent,
   type OmpProcessOptions,
   OmpProcessRegistry,
 } from "../../process";
-import type { Logger } from "../../logging";
 import type { PortHandlerContext as ServerPortHandlerContext } from "../../registry/ports";
 import { EventReplayHub } from "../../replay";
 import { type A0PortContext, createA0Runtime, type ThreadBootstrap } from "./index";
 
+/** A `/…` path as an absolute path where the tests run: on Windows under `C:\`, as `path.join` there would make `\…`. */
+function hostPath(posix: string): string {
+  return process.platform === "win32" && posix.startsWith("/")
+    ? `C:${posix.replaceAll("/", "\\")}`
+    : posix;
+}
+
 const encoder = new TextEncoder();
-const folder = FolderPath.parse("/workspace/a0-7");
+const folder = FolderPath.parse(hostPath("/workspace/a0-7"));
 const authorityThread = ThreadId.parse("omp-session-a0-7");
-const authorityFile = SessionFilePath.parse("/workspace/a0-7/.omp/authoritative.jsonl");
+const authorityFile = SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/authoritative.jsonl"));
 const bootstrap: ThreadBootstrap = {
   threadId: authorityThread,
   folderPath: folder,
@@ -380,7 +387,7 @@ function context(
     serverInfo: {
       instanceId: "instance-a0-7",
       serverVersion: "test",
-      launchFolder: FolderPath.parse("/workspace"),
+      launchFolder: FolderPath.parse(hostPath("/workspace")),
       omp: null,
     },
     health: { status: "ok" },
@@ -1000,7 +1007,7 @@ describe("the chat session runtime: opening a chat", () => {
 
   test("starts no host when the chat's session file is missing", async () => {
     const created: FakeChatHost[] = [];
-    const missingFile = SessionFilePath.parse("/workspace/a0-7/.omp/deleted.jsonl");
+    const missingFile = SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/deleted.jsonl"));
     const missingContext: A0PortContext = {
       ...context(created),
       resolveThread: async (threadId) => ({ ...bootstrap, threadId, sessionFile: missingFile }),
@@ -1059,7 +1066,7 @@ describe("the chat session runtime: opening a chat", () => {
 
   test("two opens at the same moment of a chat whose file is gone both fail and start no host", async () => {
     const created: FakeChatHost[] = [];
-    const missingFile = SessionFilePath.parse("/workspace/a0-7/.omp/deleted-twice.jsonl");
+    const missingFile = SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/deleted-twice.jsonl"));
     const missingContext: A0PortContext = {
       ...context(created),
       resolveThread: async (threadId) => ({ ...bootstrap, threadId, sessionFile: missingFile }),
@@ -1154,7 +1161,7 @@ describe("the chat session runtime: opening a chat", () => {
     const process = created[0];
     if (process === undefined) throw new Error("missing fake host");
     const switchedThread = ThreadId.parse("omp-session-branched");
-    const switchedFile = SessionFilePath.parse("/workspace/a0-7/.omp/branched.jsonl");
+    const switchedFile = SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/branched.jsonl"));
     process.nextIdentity = { threadId: switchedThread, sessionFile: switchedFile };
 
     await getHandler(handlers, "request")(
@@ -1182,7 +1189,7 @@ describe("the chat session runtime: opening a chat", () => {
     const moved = created[0];
     if (moved === undefined) throw new Error("missing fake host");
     const switchedThread = ThreadId.parse("omp-session-branched");
-    const switchedFile = SessionFilePath.parse("/workspace/a0-7/.omp/branched.jsonl");
+    const switchedFile = SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/branched.jsonl"));
     moved.nextIdentity = { threadId: switchedThread, sessionFile: switchedFile };
     await getHandler(handlers, "request")(
       request(authorityThread, "branch", { entryId: "entry-1" }),
@@ -1219,7 +1226,7 @@ describe("the chat session runtime: opening a chat", () => {
     const moved = created[0];
     if (moved === undefined) throw new Error("missing fake host");
     const switchedThread = ThreadId.parse("omp-session-branched");
-    const switchedFile = SessionFilePath.parse("/workspace/a0-7/.omp/branched.jsonl");
+    const switchedFile = SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/branched.jsonl"));
     moved.nextIdentity = { threadId: switchedThread, sessionFile: switchedFile };
     const { replay } = runtimeContext;
     const oldStream = chatSessionEventStream(authorityThread);
@@ -1281,7 +1288,7 @@ describe("the chat session runtime: a chat omp moved to another file (omp 18.18)
     await ticks();
     expect(heard.filter((payload) => payloadKind(payload) === "moved")).toEqual([]);
     const copyThread = ThreadId.parse("omp-session-moved");
-    const copyFile = SessionFilePath.parse("/workspace/a0-7/.omp/moved.jsonl");
+    const copyFile = SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/moved.jsonl"));
     host.identity = { threadId: copyThread, sessionFile: copyFile };
     host.emitEvent({
       type: "notice",
@@ -1327,14 +1334,14 @@ describe("the chat session runtime: a chat omp moved to another file (omp 18.18)
     const created: FakeChatHost[] = [];
     const copy = {
       threadId: ThreadId.parse("moved-chat"),
-      sessionFile: SessionFilePath.parse(copyFile),
+      sessionFile: SessionFilePath.parse(hostPath(copyFile)),
     };
     const runtimeContext: A0PortContext = {
       ...context(created, copy),
       resolveThread: async (threadId) => ({
         ...bootstrap,
         threadId,
-        sessionFile: SessionFilePath.parse(oldFile),
+        sessionFile: SessionFilePath.parse(hostPath(oldFile)),
         args: ["--resume", oldFile],
       }),
     };
@@ -2069,7 +2076,7 @@ describe("the chat session runtime: stops, deletes and chats another omp holds",
     const switchedThread = ThreadId.parse("omp-session-switched-rename");
     process.nextIdentity = {
       threadId: switchedThread,
-      sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/switched-rename.jsonl"),
+      sessionFile: SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/switched-rename.jsonl")),
     };
     await getHandler(handlers, "request")(
       request(authorityThread, "branch", { entryId: "entry-1" }),
@@ -2778,7 +2785,7 @@ describe("the chat session runtime: renames, whether or not the chat is open", (
         // omp writes to a copy when another live process holds the chat's file.
         process.nextIdentity = {
           threadId: ThreadId.parse("omp-copy-a0-7"),
-          sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/copy-a0-7.jsonl"),
+          sessionFile: SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/copy-a0-7.jsonl")),
         };
       }),
     };
@@ -2795,7 +2802,7 @@ describe("the chat session runtime: renames, whether or not the chat is open", (
 describe("the chat session runtime: a chat an earlier server left running, on another omp (D2)", () => {
   const spare: FakeIdentity = {
     threadId: ThreadId.parse("omp-session-left-running"),
-    sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/left-running.jsonl"),
+    sessionFile: SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/left-running.jsonl")),
   };
 
   /** This server starts and finds the chat's host running, on an omp of its own: restarted once it settles. */
@@ -3486,7 +3493,7 @@ describe("the chat session runtime: what an omp update relies on", () => {
   test("a paused chat an earlier server left running on an older omp comes back paused on this server's", async () => {
     const left: FakeIdentity = {
       threadId: ThreadId.parse("omp-session-paused-left"),
-      sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/paused-left.jsonl"),
+      sessionFile: SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/paused-left.jsonl")),
     };
     const created: FakeChatHost[] = [];
     const runtimeContext: A0PortContext = {
@@ -3732,7 +3739,7 @@ describe("the chat session runtime: what an omp update relies on", () => {
   test("chatHosts lists a chat still being taken over, with the omp it runs and that it moves", async () => {
     const left: FakeIdentity = {
       threadId: ThreadId.parse("omp-session-taking-over"),
-      sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/taking-over.jsonl"),
+      sessionFile: SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/taking-over.jsonl")),
     };
     const created: FakeChatHost[] = [];
     const { runtimeContext, runtime, handlers, timer } = updating(created, {
@@ -3802,7 +3809,7 @@ describe("the chat session runtime: what an omp update relies on", () => {
   test("chatHosts says a chat taken over from an older omp moves once it settles", async () => {
     const left: FakeIdentity = {
       threadId: ThreadId.parse("omp-session-older-left"),
-      sessionFile: SessionFilePath.parse("/workspace/a0-7/.omp/older-left.jsonl"),
+      sessionFile: SessionFilePath.parse(hostPath("/workspace/a0-7/.omp/older-left.jsonl")),
     };
     const created: FakeChatHost[] = [];
     // Its first reply is not saved yet and a page holds it, so it keeps running on the older omp for now.

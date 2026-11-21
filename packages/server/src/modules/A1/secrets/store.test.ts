@@ -112,7 +112,8 @@ describe("the secrets of omp's Hide Secrets", () => {
         friendlyName: "deploy-key",
       },
     ]);
-    expect((await stat(join(agentDir, "secrets.yml"))).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32")
+      expect((await stat(join(agentDir, "secrets.yml"))).mode & 0o777).toBe(0o600);
     const list = await store.list();
     expect(list.others).toBe(1);
     expect(list.hidden).toBe(true);

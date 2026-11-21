@@ -484,7 +484,7 @@ describe("A0.6 upgrade and static serving", () => {
   });
 
   test("binds loopback, serves the new UI at the root and exposes a random token", async () => {
-    const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
+    const fixtures = `${import.meta.dir}/test-fixtures`;
     const app = createAppServer({
       port: 0,
       uiRoot: `${fixtures}/ui`,
@@ -502,7 +502,7 @@ describe("A0.6 upgrade and static serving", () => {
     }
   });
   test("sends the removed old UI's addresses (/old and everything under it) and the former /v2 ones on to the root, with their query", async () => {
-    const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
+    const fixtures = `${import.meta.dir}/test-fixtures`;
     const app = createAppServer({
       port: 0,
       uiRoot: `${fixtures}/ui`,
@@ -533,7 +533,7 @@ describe("A0.6 upgrade and static serving", () => {
     }
   });
   test("only the lite view may be framed: by the browser extensions' and VS Code's panels with no setting at all, and by the pages OMP_APP_FRAME_ANCESTORS names (#2843)", async () => {
-    const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
+    const fixtures = `${import.meta.dir}/test-fixtures`;
     const framing = async (url: string) => {
       const response = await fetch(url);
       return {
@@ -589,7 +589,7 @@ describe("A0.6 upgrade and static serving", () => {
     }
   });
   test("a built asset is kept for good and goes gzipped to a browser that takes gzip; the page is never kept", async () => {
-    const fixtures = new URL("./test-fixtures", import.meta.url).pathname;
+    const fixtures = `${import.meta.dir}/test-fixtures`;
     const app = createAppServer({
       port: 0,
       uiRoot: `${fixtures}/ui`,

@@ -132,7 +132,7 @@ describe("createLogger", () => {
       '2026-10-07T06:00:00.000Z INFO  omp.process status=running pid=4242 note="has spaces"',
       '2026-10-07T06:00:00.000Z WARN  port.error message="denied [redacted] [redacted]"',
     ]);
-    expect((await stat(logger.path)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(logger.path)).mode & 0o777).toBe(0o600);
     expect(logger.path).toBe(join(dir, LOG_FILE_NAME));
   });
 

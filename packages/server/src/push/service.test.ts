@@ -39,7 +39,7 @@ test("devices subscribe and leave; a push reaches each, and a device its push se
   const key = await service.publicKey();
   expect(Buffer.from(key, "base64url")).toHaveLength(65);
   // The file holds the private key and the devices: owner-only.
-  expect((await stat(file)).mode & 0o777).toBe(0o600);
+  if (process.platform !== "win32") expect((await stat(file)).mode & 0o777).toBe(0o600);
 
   await service.subscribe(subscription("https://web.push.apple.com/phone", "iPhone"));
   // The same device again replaces itself.

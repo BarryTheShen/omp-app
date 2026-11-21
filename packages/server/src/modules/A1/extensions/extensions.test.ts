@@ -197,56 +197,63 @@ describe("ExtensionCatalogService", () => {
     catalog.dispose();
   });
 
-  test("an unreadable extensions folder fails with the catalog's plain sentence, and keeps the cause", async () => {
-    const root = await temporaryDirectory();
-    const home = join(root, "home");
-    const extensions = join(home, ".omp", "agent", "extensions");
-    await mkdir(extensions, { recursive: true });
-    await chmod(extensions, 0o000);
-    const catalog = new ExtensionCatalogService({ homeDir: home, env: { HOME: home } });
-    try {
-      const failure = await catalog.list({ folder: null }).then(
-        () => undefined,
-        (error: unknown) => error,
-      );
-      expect(failure).toBeInstanceOf(AppFailure);
-      if (!(failure instanceof AppFailure)) throw new Error("expected an AppFailure");
-      expect(failure.appError).toEqual({
-        code: "permission",
-        message: "Unable to read the installed extensions.",
-        retryable: true,
-      });
-      expect(failure.cause).toMatchObject({ code: "EACCES" });
-    } finally {
-      catalog.dispose();
-      await chmod(extensions, 0o755);
-    }
-  });
+  // A mode that refuses reading binds this user only off Windows, whose folders follow their access lists instead.
+  test.skipIf(process.platform === "win32")(
+    "an unreadable extensions folder fails with the catalog's plain sentence, and keeps the cause",
+    async () => {
+      const root = await temporaryDirectory();
+      const home = join(root, "home");
+      const extensions = join(home, ".omp", "agent", "extensions");
+      await mkdir(extensions, { recursive: true });
+      await chmod(extensions, 0o000);
+      const catalog = new ExtensionCatalogService({ homeDir: home, env: { HOME: home } });
+      try {
+        const failure = await catalog.list({ folder: null }).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        expect(failure).toBeInstanceOf(AppFailure);
+        if (!(failure instanceof AppFailure)) throw new Error("expected an AppFailure");
+        expect(failure.appError).toEqual({
+          code: "permission",
+          message: "Unable to read the installed extensions.",
+          retryable: true,
+        });
+        expect(failure.cause).toMatchObject({ code: "EACCES" });
+      } finally {
+        catalog.dispose();
+        await chmod(extensions, 0o755);
+      }
+    },
+  );
 
-  test("a readable extensions folder whose child cannot be checked fails with the catalog's sentence too", async () => {
-    const root = await temporaryDirectory();
-    const home = join(root, "home");
-    const extensions = join(home, ".omp", "agent", "extensions");
-    await writeText(join(extensions, "native-ext", "index.ts"), "export default {};");
-    // Listing needs only read permission, but checking a child needs search permission too.
-    await chmod(extensions, 0o444);
-    const catalog = new ExtensionCatalogService({ homeDir: home, env: { HOME: home } });
-    try {
-      const failure = await catalog.list({ folder: null }).then(
-        () => undefined,
-        (error: unknown) => error,
-      );
-      expect(failure).toBeInstanceOf(AppFailure);
-      if (!(failure instanceof AppFailure)) throw new Error("expected an AppFailure");
-      expect(failure.appError).toEqual({
-        code: "permission",
-        message: "Unable to read the installed extensions.",
-        retryable: true,
-      });
-      expect(failure.cause).toMatchObject({ code: "EACCES" });
-    } finally {
-      catalog.dispose();
-      await chmod(extensions, 0o755);
-    }
-  });
+  test.skipIf(process.platform === "win32")(
+    "a readable extensions folder whose child cannot be checked fails with the catalog's sentence too",
+    async () => {
+      const root = await temporaryDirectory();
+      const home = join(root, "home");
+      const extensions = join(home, ".omp", "agent", "extensions");
+      await writeText(join(extensions, "native-ext", "index.ts"), "export default {};");
+      // Listing needs only read permission, but checking a child needs search permission too.
+      await chmod(extensions, 0o444);
+      const catalog = new ExtensionCatalogService({ homeDir: home, env: { HOME: home } });
+      try {
+        const failure = await catalog.list({ folder: null }).then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+        expect(failure).toBeInstanceOf(AppFailure);
+        if (!(failure instanceof AppFailure)) throw new Error("expected an AppFailure");
+        expect(failure.appError).toEqual({
+          code: "permission",
+          message: "Unable to read the installed extensions.",
+          retryable: true,
+        });
+        expect(failure.cause).toMatchObject({ code: "EACCES" });
+      } finally {
+        catalog.dispose();
+        await chmod(extensions, 0o755);
+      }
+    },
+  );
 });

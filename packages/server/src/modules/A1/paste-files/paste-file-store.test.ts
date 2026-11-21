@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { AppFailure, SessionFilePath } from "@omp-app/contracts";
 import { createPasteFileStore, localRootOf, safeLocalFileName } from "./paste-file-store";
 
@@ -60,9 +60,11 @@ describe("paste file store", () => {
   });
 
   test("the folder is the one omp's local:// resolver reads: the session file without .jsonl, then local", () => {
-    expect(
-      localRootOf(SessionFilePath.parse("/home/user/.omp/agent/sessions/-work/chat-1.jsonl")),
-    ).toBe("/home/user/.omp/agent/sessions/-work/chat-1/local");
+    // A full path where the tests run (under `D:\` on Windows).
+    const sessions = resolve("/home/user/.omp/agent/sessions/-work");
+    expect(localRootOf(SessionFilePath.parse(join(sessions, "chat-1.jsonl")))).toBe(
+      join(sessions, "chat-1", "local"),
+    );
   });
 
   test("a folder that cannot be created fails with a plain message that names no path", async () => {

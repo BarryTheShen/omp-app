@@ -51,7 +51,7 @@ describe("launch link history", () => {
     const text = await readFile(file, "utf8");
     expect(text).not.toContain("first-start-token");
     expect(text).not.toContain("second-start-token");
-    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(file)).mode & 0o777).toBe(0o600);
   });
 
   test("remembering twice in one start keeps both launch tokens", async () => {

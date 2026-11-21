@@ -77,7 +77,7 @@ async function startServerWithFailingWatches(): Promise<{
   await mkdir(join(agentDir, "rules"));
   await writeFile(join(agentDir, "rules", "demo.md"), "# demo\n");
   await writeFile(join(agentDir, "config.yml"), "model: fake\n");
-  const ompBin = join(root, "fake-omp");
+  const ompBin = join(root, "fake-omp.ts");
   await writeFile(ompBin, FAKE_OMP, { mode: 0o755 });
   await chmod(ompBin, 0o755);
   let watcherSlotsAvailable = false;

@@ -6,7 +6,7 @@
  */
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:net";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { AccessAlias, SecretName } from "@omp-app/contracts";
 import { z } from "zod";
 import { stateDirectory } from "../logging";
@@ -324,11 +324,12 @@ export function ompSearchPath(
   currentPath: string | undefined,
   exists: (path: string) => boolean,
 ): string {
-  const parts = (currentPath ?? "").split(":").filter((part) => part !== "");
+  // Entries are split by the system's separator: `:`, or `;` on Windows, where `:` is part of every `C:\…` entry.
+  const parts = (currentPath ?? "").split(delimiter).filter((part) => part !== "");
   const extra = [join(home, ".bun", "bin"), join(home, ".local", "bin")].filter(
     (dir) => exists(dir) && !parts.includes(dir),
   );
-  return [...parts, ...extra].join(":");
+  return [...parts, ...extra].join(delimiter);
 }
 
 /**
