@@ -2,7 +2,7 @@ import type { IDockviewPanelProps } from "dockview-react";
 import { type ReactNode, Suspense, use } from "react";
 import { loadable } from "../loadable";
 import { PaneHostContext } from "../workspace/ChatPanel";
-import type { DashboardPaneParams } from "./dashboardPane";
+import type { DashboardPaneParams } from "./dashboardPaneParams";
 
 /** The dashboard's page, loaded a little after the app is ready (`preloadPages` in `App.tsx`), or when it first shows. */
 export const dashboardBody = loadable(() =>

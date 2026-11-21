@@ -1,0 +1,75 @@
+# omp-app off Linux (P2 of the platforms plan): the typecheck, the contracts' tests and the server's tests on macOS and
+# Windows, as GitHub's own runners have them. It shows what breaks there; each fix makes a step pass for good. Runs by
+# hand and on pushes to ci/platforms; once the server's tests pass on both, pull requests that change the server or the
+# contracts run it too. Only GitHub-owned actions are used, so Bun comes from its official release, checked against the
+# release's checksum file, as release.yml installs it.
+# First run (2026-11-20): typecheck and contracts pass on both; server tests: macOS 1465 pass / 7 fail, Windows 1110 /
+# 362.
+name: platforms
+
+on:
+  push:
+    branches: [ci/platforms]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platforms-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            bun: bun-darwin-aarch64
+          - os: windows-latest
+            bun: bun-windows-x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Bun 1.3.14
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ matrix.bun }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          gh release download bun-v1.3.14 --repo oven-sh/bun --pattern "$ASSET.zip" --pattern SHASUMS256.txt
+          grep " $ASSET.zip\$" SHASUMS256.txt | (command -v sha256sum >/dev/null && sha256sum -c - || shasum -a 256 -c -)
+          unzip -q "$ASSET.zip"
+          echo "$RUNNER_TEMP/$ASSET" >>"$GITHUB_PATH"
+          "$RUNNER_TEMP/$ASSET/bun" --version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Contracts' tests
+        run: bun test
+        working-directory: packages/contracts
+
+      - name: Server's tests
+        run: bun test 2>&1 | tee "$RUNNER_TEMP/server-tests.txt"
+        working-directory: packages/server
+
+      - name: What failed, in the run's summary
+        if: always()
+        run: |
+          {
+            echo "## ${{ matrix.os }}: server tests that failed"
+            grep -E '^\(fail\)' "$RUNNER_TEMP/server-tests.txt" | sed 's/^/- /' | head -200 || true
+            grep -E '^ *[0-9]+ (pass|fail)$' "$RUNNER_TEMP/server-tests.txt" || true
+          } >>"$GITHUB_STEP_SUMMARY"

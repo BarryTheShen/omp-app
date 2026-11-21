@@ -39,7 +39,7 @@ import {
   DASHBOARD_PANE,
   type DashboardPaneParams,
   isDashboardPane,
-} from "../dashboard/dashboardPane";
+} from "../dashboard/dashboardPaneParams";
 import { onDesktopOpenChat } from "../desktop/openChat";
 import { inAppWindow, KEYS, keycap } from "../keys/table";
 import { FilePane } from "../panels/files/FilePane";
