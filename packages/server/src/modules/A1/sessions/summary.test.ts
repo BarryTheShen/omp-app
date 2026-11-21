@@ -319,7 +319,8 @@ describe("streaming session summary", () => {
     const bucket = path.join(sessionsRoot, `-${"a".repeat(254)}`);
     await mkdir(bucket, { recursive: true });
     for (let index = 0; index < 3; index += 1) {
-      const file = path.join(bucket, `s${index}-${"x".repeat(60)}.jsonl`);
+      // 140 characters of name: past 400 also under a short temporary folder (macOS's), under the 255 a name may have.
+      const file = path.join(bucket, `s${index}-${"x".repeat(140)}.jsonl`);
       await writeFile(
         file,
         `${[header(`s${index}`, "/w"), messageAt(new Date(Date.UTC(2026, 9, 1 + index)), "user", `prompt ${index}`)].join("\n")}\n`,
@@ -330,7 +331,7 @@ describe("streaming session summary", () => {
         new Date(Date.UTC(2026, 9, 1 + index)),
       );
     }
-    expect(path.join(bucket, `s0-${"x".repeat(60)}.jsonl`).length).toBeGreaterThan(400);
+    expect(path.join(bucket, `s0-${"x".repeat(140)}.jsonl`).length).toBeGreaterThan(400);
     const store = new SessionFileStore({
       sessionsRoot,
       home: root,

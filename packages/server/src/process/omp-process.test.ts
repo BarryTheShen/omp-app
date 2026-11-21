@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { AppFailure, FolderPath, ThreadId } from "@omp-app/contracts";
@@ -192,7 +202,8 @@ describe("OmpProcess spawn and stdio", () => {
     expect(process.status).toBe("running");
     expect(process.pid).toBeGreaterThan(0);
     expect(process.processId).toBeDefined();
-    expect(notice).toMatchObject({ cwd: folder, echoedEnv: "isolated-value" });
+    // The process reports its folder's real path: on macOS the temporary folder is under a link (/var → /private/var).
+    expect(notice).toMatchObject({ cwd: await realpath(folder), echoedEnv: "isolated-value" });
   });
   test("adds an app-owned usage-reset overlay after configured overlays", async () => {
     const folder = await temporaryFolder();

@@ -63,13 +63,19 @@ function nearestExistingDirectory(directory: string): string {
 /**
  * Whether a directory event may concern the watched file. Bun's fs.watch can report no filename
  * (`undefined`, as well as `null`); the change might then be ours, so it counts (the content hash
- * decides afterwards whether anything really changed).
+ * decides afterwards whether anything really changed). On macOS a write to a temporary file renamed
+ * over the target (how this app and most editors save) is reported under the temporary file's name
+ * only (seen on GitHub's macOS runner, 2026-11-20: `rename "target.json.123.tmp"`, nothing for
+ * `target.json`), so there every event in the folder may concern it. Linux and Windows name the target.
  */
 export function mayConcernFile(
   changedFilename: string | Buffer | null | undefined,
   filename: string,
+  platform: NodeJS.Platform = process.platform,
 ): boolean {
-  return changedFilename == null || String(changedFilename) === filename;
+  if (changedFilename == null) return true;
+  if (platform !== "linux" && platform !== "win32") return true;
+  return String(changedFilename) === filename;
 }
 
 /**
