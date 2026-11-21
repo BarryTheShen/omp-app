@@ -1,7 +1,8 @@
 # Release: builds the installable packages of main twice a day, and only when
 # the product changed since the last release. There are two packages of the same version: the window
 # (omp-app-desktop: the "omp app" window with its bundled server) and the terminal command (omp-app,
-# which opens the app in the browser). The release page lists both, and what changed.
+# which opens the app in the browser). The release page lists both, and what changed. The window is also built for
+# macOS (.dmg) and Windows (an installer) on those systems after the release is published (desktop-other).
 #
 #   scheduled: 01:23 and 13:23 UTC (8:23 PM and 8:23 AM US Central in summer, 7:23 PM and 7:23 AM in winter). Off the
 #              hour: GitHub delays scheduled runs at the start of an hour, when it is busiest, and may drop them.
@@ -14,7 +15,8 @@
 # Each package is smoke-tested before anything is published: when a test fails, the release fails and
 # nothing is published.
 # The workflow only ever builds main and writes only releases and tags (contents: write).
-# It runs on GitHub's hosted Ubuntu 24.04 runner, and installs the libraries the window needs below.
+# It runs on GitHub's hosted Ubuntu 24.04 runner, and installs the libraries the window needs below; desktop-other runs
+# on GitHub's macOS and Windows runners.
 # This workflow only starts from the schedule or by hand, never from a pull request, so it never runs untrusted code.
 name: release
 
@@ -39,6 +41,10 @@ jobs:
   release:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    # For the macOS and Windows windows' job below, which adds their bundles to the release this job published.
+    outputs:
+      version: ${{ steps.changes.outputs.version }}
+      changed: ${{ steps.changes.outputs.changed }}
     steps:
       - name: Check out main with its history and tags
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -305,3 +311,73 @@ jobs:
           done
           gh release create "v$VERSION" "${assets[@]}" dist/release/SHA256SUMS \
             --target "$(git rev-parse HEAD)" --title "omp app $VERSION" --notes-file dist/release/notes.md
+
+  # The window for macOS (.dmg) and Windows (an installer), built on those systems from the released tag, started (it
+  # must start its server, whose page then loads; packaging/smoke-desktop.ts) and added to the release with a checksum
+  # file of its own. They follow the release: a failure here leaves the Linux packages published, and the run red.
+  desktop-other:
+    needs: release
+    if: needs.release.outputs.changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            bun: bun-darwin-aarch64
+            window: omp-app-desktop
+          - os: windows-latest
+            bun: bun-windows-x64
+            window: omp-app-desktop.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the released commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v${{ needs.release.outputs.version }}
+          persist-credentials: false
+
+      - name: Install Bun 1.3.14, and 1.4.4 for the chat host
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ matrix.bun }}
+        run: |
+          set -euo pipefail
+          for version in 1.3.14 1.4.4; do
+            mkdir -p "$RUNNER_TEMP/bun-$version"
+            cd "$RUNNER_TEMP/bun-$version"
+            gh release download "bun-v$version" --repo oven-sh/bun --pattern "$ASSET.zip" --pattern SHASUMS256.txt
+            grep " $ASSET.zip\$" SHASUMS256.txt | (command -v sha256sum >/dev/null && sha256sum -c - || shasum -a 256 -c -)
+            unzip -q "$ASSET.zip"
+          done
+          echo "$RUNNER_TEMP/bun-1.3.14/$ASSET" >>"$GITHUB_PATH"
+          echo "CHAT_HOST_BUN=$RUNNER_TEMP/bun-1.4.4/$ASSET/bun" >>"$GITHUB_ENV"
+
+      - name: Install Rust (stable)
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build the window's bundle
+        run: bash packaging/build-desktop-bundle.sh "${{ needs.release.outputs.version }}"
+
+      - name: Check that the window starts its server
+        run: bun packaging/smoke-desktop.ts "apps/desktop/src-tauri/target/release/${{ matrix.window }}"
+
+      - name: Add the bundle and its checksum to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd dist/desktop
+          bundle=$(ls omp-app-desktop_"$VERSION"_*)
+          cp SHA256SUMS "$bundle.sha256"
+          gh release upload "v$VERSION" "$bundle" "$bundle.sha256" --repo "$GITHUB_REPOSITORY"
