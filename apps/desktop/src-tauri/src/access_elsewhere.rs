@@ -34,6 +34,8 @@ linux_only!(
     access_allow_chat,
     access_deny_chat,
     access_remove_chat,
+    access_add_chat,
+    access_share_folder,
     access_here,
     access_set_up_here,
 );

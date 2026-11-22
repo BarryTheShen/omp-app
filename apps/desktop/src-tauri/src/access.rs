@@ -330,6 +330,38 @@ pub async fn access_remove_chat(
     .await
 }
 
+/// Gives a chat the person picked access without its asking: the system asks their password, in the dialog the guard
+/// words from the chat's name (as the chat list shows it) and the server.
+#[tauri::command]
+pub async fn access_add_chat(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    thread_id: String,
+    chat: String,
+) -> Result<Value, String> {
+    let pid = std::process::id();
+    for_linked_window(&app, &window, false, move |_| {
+        one_dialog(json!({ "op": "add-chat", "pid": pid, "threadId": thread_id, "chat": chat }))
+    })
+    .await
+}
+
+/// Shares a folder the person picked (`~/…` or a full path) without an agent's asking: the guard checks it as it checks
+/// a request, and the system asks the person's password.
+#[tauri::command]
+pub async fn access_share_folder(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    path: String,
+    write: bool,
+) -> Result<Value, String> {
+    let pid = std::process::id();
+    for_linked_window(&app, &window, false, move |_| {
+        one_dialog(json!({ "op": "share-folder", "pid": pid, "path": path, "write": write }))
+    })
+    .await
+}
+
 /// The program the app installs for agent access (idle until set up).
 const PROGRAM: &str = "/usr/lib/omp-app-device/omp-app-device";
 

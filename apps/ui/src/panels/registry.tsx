@@ -115,6 +115,13 @@ export const PANELS: readonly Panel[] = [
     id: "access",
     title: "Agent access",
     icon: MonitorCog,
-    render: ({ client, openChat }) => <AccessPanel client={client} openChat={openChat} />,
+    render: ({ client, folder, chat, openChat }) => (
+      <AccessPanel
+        client={client}
+        folder={folder}
+        current={chat?.threadId ?? null}
+        openChat={openChat}
+      />
+    ),
   },
 ];

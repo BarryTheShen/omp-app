@@ -39,6 +39,13 @@ const Request = z.discriminatedUnion("op", [
     op: z.literal("remove-folder"),
     path: z.string().startsWith("/").max(4_096),
   }),
+  /** A folder the person shares themselves (`~/…` or a full path; the guard checks it). */
+  z.strictObject({
+    op: z.literal("share-folder"),
+    pid: z.number().int().positive(),
+    path: z.string().min(1).max(4_096),
+    write: z.boolean(),
+  }),
   /** Chats asking to reach this computer, and those allowed (PLAN §7f). */
   z.strictObject({
     op: z.literal("allow-chat"),
@@ -47,6 +54,13 @@ const Request = z.discriminatedUnion("op", [
   }),
   z.strictObject({ op: z.literal("deny-chat"), threadId: z.string().min(1).max(200) }),
   z.strictObject({ op: z.literal("remove-chat"), threadId: z.string().min(1).max(200) }),
+  /** A chat the person gives access themselves, by its id, with its name as the chat list shows it. */
+  z.strictObject({
+    op: z.literal("add-chat"),
+    pid: z.number().int().positive(),
+    threadId: z.string().min(1).max(200),
+    chat: z.string().max(500),
+  }),
   z.strictObject({ op: z.literal("watch") }),
   /** Enrolls the running agent itself, so it links at the next turn-on without a restart. */
   z.strictObject({
@@ -136,6 +150,9 @@ export async function serveControl(path: string, agent: Agent): Promise<() => vo
           case "remove-folder":
             void agent.removeFolder(request.path).then(answer);
             return;
+          case "share-folder":
+            void agent.shareFolder(request.pid, request.path, request.write).then(answer);
+            return;
           case "allow-chat":
             void agent.allowChat(request.pid, request.threadId).then(answer);
             return;
@@ -144,6 +161,9 @@ export async function serveControl(path: string, agent: Agent): Promise<() => vo
             return;
           case "remove-chat":
             void agent.removeChat(request.threadId).then(answer);
+            return;
+          case "add-chat":
+            void agent.addChat(request.pid, request.threadId, request.chat).then(answer);
             return;
           case "enroll":
             void agent

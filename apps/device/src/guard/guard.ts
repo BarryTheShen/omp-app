@@ -166,6 +166,14 @@ const Control = z.discriminatedUnion("op", [
   z.strictObject({ op: z.literal("deny-folder"), id: AskId }),
   /** Stops sharing a folder: no password, it only takes away. */
   z.strictObject({ op: z.literal("remove-folder"), path: z.string().startsWith("/").max(4_096) }),
+  /** The person shares a folder themselves, without an agent's asking (their password), `~/…` or a full path. */
+  z.strictObject({
+    op: z.literal("share-folder"),
+    pid: z.number().int().positive(),
+    path: z.string().min(1).max(4_096),
+    write: z.boolean(),
+    server: ServerName.optional(),
+  }),
   /** The person's password for allowing one chat to reach this computer (PLAN §7f); the grant is kept by their agent. */
   z.strictObject({
     op: z.literal("grant-chat"),
@@ -178,6 +186,10 @@ const Control = z.discriminatedUnion("op", [
 /** Who gets the access, as a password dialog says it: the server's agents when the agent named it. */
 const whose = (server: string | undefined): string =>
   server === undefined ? "Agents in omp-app" : `Agents of the omp-app server ${server}`;
+
+/** What the password dialog says when a folder is shared, whoever asked for it. */
+const shareText = (server: string | undefined, path: string, write: boolean): string =>
+  `${whose(server)} will be able to ${write ? "read and change" : "read"} the files in ${path} whenever agent access is on, until you remove it from Shared folders.`;
 
 /** Text an agent wrote, as one line for the person: control and direction characters become spaces. */
 const oneLine = (text: string): string =>
@@ -701,33 +713,82 @@ export class Guard {
     const given = await this.#options.verify(
       pid,
       "share-folder",
-      `${whose(server)} will be able to ${writes ? "read and change" : "read"} the files in ${ask.path} whenever agent access is on, until you remove it from Shared folders.`,
+      shareText(server, ask.path, writes),
     );
     if (!given) return "the password was not given";
     if (!this.#asks.has(id)) return "that request is no longer waiting";
-    for (const inner of this.#shared.filter((each) => each.path.startsWith(`${ask.path}/`)))
-      await this.#unshare(inner);
-    const folder: SharedFolder = {
-      path: ask.path,
-      place: ask.place,
-      write: writes,
-      server: ask.server,
-      grantedAt: new Date((this.#options.now ?? Date.now)()).toISOString(),
-    };
-    await folders.shared.add(folder);
-    this.#shared = await folders.shared.list();
-    this.#options.log(JSON.stringify({ type: "folder-shared", path: folder.path, write: writes }));
-    const problem = this.#until === null ? null : await this.#mount(folder);
+    const problem = await this.#share({ path: ask.path, place: ask.place }, writes, ask.server);
     this.#answer(
       id,
       problem === null
-        ? { answer: "allowed", at: sharedAt(folder.place, folders.root), write: writes }
+        ? { answer: "allowed", at: sharedAt(ask.place, folders.root), write: writes }
         : {
             answer: "refused",
             reason: `the person allowed it, but it could not be mounted: ${problem}`,
           },
     );
     return null;
+  }
+
+  /**
+   * The person shares a folder themselves, without an agent's asking, with their password: checked as an agent's
+   * request is (`checkFolder`), then shared and mounted as an allowed request is. Returns why not, or null.
+   */
+  async shareFolder(
+    pid: number,
+    asked: string,
+    write: boolean,
+    server?: string,
+  ): Promise<string | null> {
+    const folders = this.#options.folders;
+    if (folders === undefined) return "this computer does not share folders";
+    const check = await checkFolder(asked, folders.person);
+    if ("problem" in check) return check.problem;
+    const covering = this.#shared.find(
+      (each) => each.path === check.path || check.path.startsWith(`${each.path}/`),
+    );
+    if (covering !== undefined && (covering.write || !write))
+      return covering.path === check.path
+        ? `${check.path} is already shared`
+        : `${check.path} is already shared as part of ${covering.path}`;
+    if (covering !== undefined && covering.path !== check.path)
+      return `${check.path} is inside ${covering.path}, which is shared read only: share ${covering.path} itself with changes allowed`;
+    const given = await this.#options.verify(
+      pid,
+      "share-folder",
+      shareText(server, check.path, write),
+    );
+    if (!given) return "the password was not given";
+    const problem = await this.#share(check, write, this.#server ?? null);
+    return problem === null ? null : `It is shared, but it could not be mounted now: ${problem}`;
+  }
+
+  /**
+   * Shares a folder from now on, the shared folders inside it giving way to it, and mounts it at once while on: null,
+   * or why it could not be mounted.
+   */
+  async #share(
+    checked: { readonly path: string; readonly place: string },
+    write: boolean,
+    server: string | null,
+  ): Promise<string | null> {
+    const folders = this.#options.folders;
+    if (folders === undefined) return "this computer does not share folders";
+    for (const inner of this.#shared.filter((each) => each.path.startsWith(`${checked.path}/`)))
+      await this.#unshare(inner);
+    const folder: SharedFolder = {
+      path: checked.path,
+      place: checked.place,
+      write,
+      server,
+      grantedAt: new Date((this.#options.now ?? Date.now)()).toISOString(),
+    };
+    await folders.shared.add(folder);
+    this.#shared = await folders.shared.list();
+    this.#options.log(JSON.stringify({ type: "folder-shared", path: folder.path, write }));
+    const problem = this.#until === null ? null : await this.#mount(folder);
+    this.#tell({ type: "state", state: this.state() });
+    return problem;
   }
 
   /** The person turns a waiting request down (no password: it grants nothing). Returns why not, or null. */
@@ -935,6 +996,18 @@ export class Guard {
       }
       case "remove-folder": {
         const refused = await this.removeFolder(request.path);
+        socket.end(
+          refused === null ? `ok ${JSON.stringify(this.state())}\n` : `error ${refused}\n`,
+        );
+        return;
+      }
+      case "share-folder": {
+        const refused = await this.shareFolder(
+          request.pid,
+          request.path,
+          request.write,
+          request.server,
+        );
         socket.end(
           refused === null ? `ok ${JSON.stringify(this.state())}\n` : `error ${refused}\n`,
         );

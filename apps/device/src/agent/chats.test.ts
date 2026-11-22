@@ -163,6 +163,22 @@ test("the computer keeps the chats allowed to reach it: others are refused and a
   expect(link.last("state")).toMatchObject({ grants: [] });
   expect(await agent.removeChat("t-1")).toBe("that chat has no access");
   expect(events.filter((event) => event.type === "chats").length).toBeGreaterThanOrEqual(4);
+
+  // The person gives a chat access themselves, without its asking: the same password, the server hears the grant, and
+  // a request it had waiting is answered by it.
+  link.frame({ type: "ask", threadId: "t-3", chat: "Asked first" });
+  await Bun.sleep(50);
+  expect(await agent.addChat(4242, "t-3", "Deploy\u0007 notes")).toBeNull();
+  expect(asked.filter((each) => each.op === "grant-chat").at(-1)).toEqual({
+    op: "grant-chat",
+    pid: 4242,
+    chat: "Deploy  notes",
+    server: "server.example",
+  });
+  expect(agent.chats.granted).toMatchObject([{ threadId: "t-3", chat: "Deploy  notes" }]);
+  expect(agent.chats.requests).toEqual([]);
+  expect(link.last("state")).toMatchObject({ grants: ["t-3"] });
+  expect(await agent.addChat(4242, "t-3", "Again")).toBe("that chat already has access");
   await agent.stop();
 });
 

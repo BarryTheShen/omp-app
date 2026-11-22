@@ -1,8 +1,9 @@
 import type { AppClient } from "@omp-app/client";
-import { type AccessState, DevicesPort } from "@omp-app/contracts";
+import { type AccessState, DevicesPort, type FolderPath, type ThreadId } from "@omp-app/contracts";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { type Bridge, desktopBridge, refusalText } from "../../desktop/bridge";
+import { DirectGrants } from "./DirectGrants";
 import { clock, lengthText, timeLeft } from "./time";
 
 /** What the desktop app says of agent access on its own computer (`access_here` in apps/desktop). */
@@ -180,11 +181,17 @@ const WRAPS = "h-auto min-h-7 whitespace-normal py-1 text-left max-sm:min-h-11";
  */
 export function ThisComputer({
   client,
+  folder,
+  current,
   listed,
   onLinked,
   onAlias,
 }: {
   readonly client: AppClient;
+  /** The workspace whose recent chats can be given access. */
+  readonly folder: FolderPath;
+  /** The chat open beside the panel, offered first; null when none is. */
+  readonly current: ThreadId | null;
   /** The names of the computers this server lists. */
   readonly listed: readonly string[];
   /** The computer joined or left this server's list. */
@@ -594,6 +601,21 @@ export function ThisComputer({
       )}
       {controls && state !== null && (
         <p className="mt-2 text-xs text-t3">Each action requires your password.</p>
+      )}
+      {controls && status !== null && (
+        <DirectGrants
+          client={client}
+          folder={folder}
+          current={current}
+          allowed={new Set(chatsAllowed.map((grant) => grant.threadId))}
+          disabled={waiting}
+          onGiveChat={({ threadId, name }) =>
+            act("access_add_chat", WAITING_FOR_PASSWORD, { threadId, chat: name })
+          }
+          onShareFolder={(path, write) =>
+            act("access_share_folder", WAITING_FOR_PASSWORD, { path, write })
+          }
+        />
       )}
       {!linkedHere && (
         <div className="mt-2">

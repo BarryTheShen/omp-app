@@ -754,4 +754,58 @@ describe.skipIf(!ready)("the guard with a real sshd (#20)", () => {
     expect(h.guard.state().shared).toEqual([]);
     expect(await h.guard.removeFolder(workspace)).toBe("that folder is not shared");
   });
+
+  test("the person shares a folder themselves: checked as a request is, their password, mounted at once while on, and nothing twice", async () => {
+    const messages: string[] = [];
+    let give = true;
+    const h = await setUp(
+      async (_pid, action, message) => {
+        messages.push(`${action}: ${message}`);
+        return give;
+      },
+      0,
+      60_000,
+    );
+    const workspace = join(h.personHome, "projects");
+    const mountedAt = join(h.shareRoot, "projects");
+
+    // While off: shared, not mounted; it is mounted at the next turn-on.
+    expect(
+      await h.guard.shareFolder(process.pid, "~/projects/app", false, "server.example"),
+    ).toBeNull();
+    expect(messages.at(-1)).toBe(
+      `share-folder: Agents of the omp-app server server.example will be able to read the files in ${workspace}/app whenever agent access is on, until you remove it from Shared folders.`,
+    );
+    expect(h.mountCalls).toEqual([]);
+    expect(h.guard.state().shared).toMatchObject([{ path: `${workspace}/app`, write: false }]);
+
+    // Refused without a password: the secret folders, the whole home, a folder that is not there, one shared already.
+    const asked = messages.length;
+    expect(await h.guard.shareFolder(process.pid, "~/.ssh", false)).toContain("~/.ssh");
+    expect(await h.guard.shareFolder(process.pid, "~", false)).toContain("whole home folder");
+    expect(await h.guard.shareFolder(process.pid, "~/no-such", false)).toContain("does not exist");
+    expect(await h.guard.shareFolder(process.pid, "relative", false)).toContain("full path");
+    expect(await h.guard.shareFolder(process.pid, `${workspace}/app`, false)).toBe(
+      `${workspace}/app is already shared`,
+    );
+    expect(messages).toHaveLength(asked);
+
+    // The password refused: nothing changes.
+    give = false;
+    expect(await h.guard.shareFolder(process.pid, "~/projects", true)).toBe(
+      "the password was not given",
+    );
+    expect(h.guard.state().shared).toHaveLength(1);
+    give = true;
+
+    // While on, a folder around the shared one takes its place and is mounted at once, to change files.
+    expect(await h.guard.on(process.pid, 30, h.clientPublic)).toBeNull();
+    expect(await h.guard.shareFolder(process.pid, "~/projects", true)).toBeNull();
+    expect(messages.at(-1)).toContain(`read and change the files in ${workspace} whenever`);
+    expect(h.guard.state().shared).toMatchObject([{ path: workspace, write: true }]);
+    expect(h.mountCalls.at(-1)).toBe(`mount ${workspace} ${mountedAt} rw`);
+    expect(await h.guard.shareFolder(process.pid, "~/projects/app", true)).toBe(
+      `${workspace}/app is already shared as part of ${workspace}`,
+    );
+  });
 });

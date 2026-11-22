@@ -4,6 +4,7 @@ import {
   type AccessMachine,
   AppFailure,
   DeviceAccessPort,
+  type FolderPath,
   type ThreadId,
 } from "@omp-app/contracts";
 import { ChevronDown, ChevronRight, CircleAlert } from "lucide-react";
@@ -119,9 +120,15 @@ function ActivityRow({
  */
 export function AccessPanel({
   client,
+  folder,
+  current,
   openChat,
 }: {
   readonly client: AppClient;
+  /** The workspace whose recent chats this computer's section offers to give access. */
+  readonly folder: FolderPath;
+  /** The chat open beside the panel. */
+  readonly current: ThreadId | null;
   readonly openChat?: (target: ChatTarget) => void;
 }): ReactNode {
   const [machines, setMachines] = useState<readonly AccessMachine[] | null>(null);
@@ -260,6 +267,8 @@ export function AccessPanel({
       </p>
       <ThisComputer
         client={client}
+        folder={folder}
+        current={current}
         listed={machines.map((machine) => machine.alias)}
         onLinked={() => {
           // A notice about this computer ("… was removed") is stale once it is linked again.

@@ -92,6 +92,8 @@ fn main() {
             access::access_allow_chat,
             access::access_deny_chat,
             access::access_remove_chat,
+            access::access_add_chat,
+            access::access_share_folder,
             update::update_desktop_app,
             access::access_here,
             access::access_set_up_here,

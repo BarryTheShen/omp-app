@@ -19,7 +19,7 @@ import {
   DEVICE_ACCESS_PATHS,
 } from "@omp-app/contracts";
 import { z } from "zod";
-import { type ChatGrant, ChatGrants, type ChatRequest } from "./chat-grants";
+import { type ChatGrant, ChatGrants, type ChatRequest, chatName } from "./chat-grants";
 import {
   GUARD_WAIT_MS,
   guardOpen,
@@ -424,6 +424,27 @@ export class Agent {
     return null;
   }
 
+  /**
+   * Gives a chat the person picked access without its asking (`callerPid` asks the person's password, in the same
+   * dialog as allowing a request); `chat` is its name as the list shows it.
+   */
+  async addChat(callerPid: number, threadId: string, chat: string): Promise<string | null> {
+    const server = this.#machine?.serverOrigin;
+    if (server === undefined || this.#chats === null)
+      return "this computer is not linked to a server";
+    if (this.#chats.allowed(server, threadId)) return "that chat already has access";
+    const name = chatName(chat);
+    const answer = await guardRequest(
+      this.#options.guardSocket,
+      { op: "grant-chat", pid: callerPid, chat: name, ...this.#server() },
+      PASSWORD_WAIT_MS,
+    );
+    if (!answer.ok) return answer.reason;
+    await this.#chats.grant(server, threadId, name, new Date());
+    this.#chatsChanged();
+    return null;
+  }
+
   /** Turns a chat's request down (no password: it grants nothing). */
   denyChat(threadId: string): string | null {
     if (this.#chats === null || !this.#chats.deny(threadId)) return "that chat is no longer asking";
@@ -582,6 +603,19 @@ export class Agent {
     const answer = await guardRequest(
       this.#options.guardSocket,
       { op: "allow-folder", pid: callerPid, id, write, ...this.#server() },
+      PASSWORD_WAIT_MS,
+    );
+    return answer.ok ? null : answer.reason;
+  }
+
+  /**
+   * Shares a folder the person picked, without an agent's asking (`callerPid` asks the password, in the same dialog as
+   * allowing a request): to read it, or also to change it.
+   */
+  async shareFolder(callerPid: number, path: string, write: boolean): Promise<string | null> {
+    const answer = await guardRequest(
+      this.#options.guardSocket,
+      { op: "share-folder", pid: callerPid, path, write, ...this.#server() },
       PASSWORD_WAIT_MS,
     );
     return answer.ok ? null : answer.reason;

@@ -92,10 +92,18 @@ export class ChatGrants {
   async allow(threadId: string, now: Date): Promise<ChatGrant | null> {
     const request = this.#requests.get(threadId);
     if (request === undefined) return null;
+    return this.grant(request.server, threadId, request.chat, now);
+  }
+
+  /**
+   * Allows a chat the person picked themselves, without its asking (after their password); a request it had waiting is
+   * answered by it.
+   */
+  async grant(server: string, threadId: string, chat: string, now: Date): Promise<ChatGrant> {
     const grant: ChatGrant = {
       threadId,
-      chat: request.chat,
-      server: request.server,
+      chat: chatName(chat),
+      server,
       grantedAt: now.toISOString(),
     };
     await this.#save([...this.#grants.filter((each) => each.threadId !== threadId), grant]);
