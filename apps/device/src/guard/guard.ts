@@ -162,6 +162,8 @@ const Control = z.discriminatedUnion("op", [
     id: AskId,
     write: z.boolean(),
     server: ServerName.optional(),
+    /** The chat that asked, as the person's agent knows it from its session: named in the dialog and the shared list. */
+    chat: z.string().max(120).optional(),
   }),
   z.strictObject({ op: z.literal("deny-folder"), id: AskId }),
   /** Stops sharing a folder: no password, it only takes away. */
@@ -272,6 +274,8 @@ export interface FolderAsk {
   readonly write: boolean;
   /** Why, as the agent said it (one line). */
   readonly why: string;
+  /** The session that asked: the person's agent names the request by that session's chat. */
+  readonly stream: number;
   /** The server whose agents have access now. */
   readonly server: string | null;
 }
@@ -385,12 +389,13 @@ export class Guard {
       changed: this.#review,
       removed: this.#removed,
       sudoUntil: this.#sudoUntil === null ? null : new Date(this.#sudoUntil).toISOString(),
-      asks: [...this.#asks.values()].map(({ id, path, write, why, server }) => ({
+      asks: [...this.#asks.values()].map(({ id, path, write, why, server, stream }) => ({
         id,
         path,
         write,
         why,
         server,
+        stream,
       })),
       shared: this.#shared,
     };
@@ -666,6 +671,7 @@ export class Guard {
         write: event.write,
         why: oneLine(event.why).trim(),
         server: this.#server ?? null,
+        stream: event.stream,
         reply: (reply) => {
           clearTimeout(timer);
           this.#tell({ type: "folder-answer", stream: event.stream, path: check.path, ...reply });
@@ -709,19 +715,26 @@ export class Guard {
     id: string,
     write: boolean,
     server?: string,
+    chat?: string,
   ): Promise<string | null> {
     const folders = this.#options.folders;
     const ask = this.#asks.get(id);
     if (folders === undefined || ask === undefined) return "that request is no longer waiting";
     const writes = write && ask.write;
+    const asker = chat === undefined ? null : oneLine(chat).trim().slice(0, 120) || null;
     const given = await this.#options.verify(
       pid,
       "share-folder",
-      shareText(server, ask.path, writes),
+      `${asker === null ? "" : `The chat "${asker}" asked for this folder. `}${shareText(server, ask.path, writes)}`,
     );
     if (!given) return "the password was not given";
     if (!this.#asks.has(id)) return "that request is no longer waiting";
-    const problem = await this.#share({ path: ask.path, place: ask.place }, writes, ask.server);
+    const problem = await this.#share(
+      { path: ask.path, place: ask.place },
+      writes,
+      ask.server,
+      asker ?? undefined,
+    );
     this.#answer(
       id,
       problem === null
@@ -763,7 +776,7 @@ export class Guard {
       shareText(server, check.path, write),
     );
     if (!given) return "the password was not given";
-    const problem = await this.#share(check, write, this.#server ?? null);
+    const problem = await this.#share(check, write, this.#server ?? null, null);
     return problem === null ? null : `It is shared, but it could not be mounted now: ${problem}`;
   }
 
@@ -775,6 +788,8 @@ export class Guard {
     checked: { readonly path: string; readonly place: string },
     write: boolean,
     server: string | null,
+    /** The chat that asked; null when the person shared it themselves; undefined when not known. */
+    chat: string | null | undefined,
   ): Promise<string | null> {
     const folders = this.#options.folders;
     if (folders === undefined) return "this computer does not share folders";
@@ -786,6 +801,7 @@ export class Guard {
       write,
       server,
       grantedAt: new Date((this.#options.now ?? Date.now)()).toISOString(),
+      ...(chat === undefined ? {} : { chat }),
     };
     await folders.shared.add(folder);
     this.#shared = await folders.shared.list();
@@ -985,6 +1001,7 @@ export class Guard {
           request.id,
           request.write,
           request.server,
+          request.chat,
         );
         socket.end(
           refused === null ? `ok ${JSON.stringify(this.state())}\n` : `error ${refused}\n`,

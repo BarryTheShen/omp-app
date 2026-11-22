@@ -22,6 +22,11 @@ export const SharedFolder = z.strictObject({
   /** The server whose agent asked for it. */
   server: z.string().max(260).nullable(),
   grantedAt: z.string(),
+  /**
+   * The chat whose request it was, as the server named it (one line); null when the person shared it themselves; absent
+   * on folders shared before chats were named.
+   */
+  chat: z.string().max(120).nullable().optional(),
 });
 export type SharedFolder = z.infer<typeof SharedFolder>;
 

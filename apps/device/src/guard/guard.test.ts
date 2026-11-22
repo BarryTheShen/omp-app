@@ -711,10 +711,24 @@ describe.skipIf(!ready)("the guard with a real sshd (#20)", () => {
     expect(first.code).toBe(3);
     expect(first.err).toContain("Their answer comes into this chat as a notice");
     const asked = await waiting();
-    expect(asked).toMatchObject({ path: workspace, write: true, why: "Read the build  logs" });
-    expect(await h.guard.allowFolder(process.pid, asked.id, false, "server.example")).toBeNull();
+    expect(asked).toMatchObject({
+      path: workspace,
+      write: true,
+      why: "Read the build  logs",
+      stream: 1,
+    });
+    // The dialog and the shared folder name the chat that asked (its agent knows it from the session).
+    expect(
+      await h.guard.allowFolder(
+        process.pid,
+        asked.id,
+        false,
+        "server.example",
+        "Fix the\u0007 build",
+      ),
+    ).toBeNull();
     expect(messages.at(-1)).toBe(
-      `share-folder: Agents of the omp-app server server.example will be able to read the files in ${workspace} whenever agent access is on, until you remove it from Shared folders.`,
+      `share-folder: The chat "Fix the  build" asked for this folder. Agents of the omp-app server server.example will be able to read the files in ${workspace} whenever agent access is on, until you remove it from Shared folders.`,
     );
     expect(await answerFor(1)).toEqual({
       type: "folder-answer",
@@ -726,7 +740,7 @@ describe.skipIf(!ready)("the guard with a real sshd (#20)", () => {
     });
     expect(h.mountCalls).toEqual([`mount ${workspace} ${mountedAt} ro`]);
     expect(h.guard.state().shared).toMatchObject([
-      { path: workspace, place: "projects", write: false },
+      { path: workspace, place: "projects", write: false, chat: "Fix the  build" },
     ]);
 
     // A folder inside it is reachable already; to change it, or a secret folder, is refused at once.

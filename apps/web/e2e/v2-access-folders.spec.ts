@@ -11,6 +11,8 @@ const ASK = {
   path: "/home/person/workspace",
   write: true,
   why: "Read the build logs",
+  server: "other.example",
+  chat: "Fix the build",
 };
 
 type Call = [string, Record<string, unknown> | null];
@@ -25,8 +27,8 @@ const fakeComputer = (target: Page) =>
   target.addInitScript((ask) => {
     const calls: [string, unknown][] = [];
     const folders: {
-      asks: { id: string; path: string; write: boolean; why: string }[];
-      shared: { path: string; write: boolean }[];
+      asks: { id: string; path: string; write: boolean; why: string; chat?: string }[];
+      shared: { path: string; write: boolean; server?: string; chat?: string | null }[];
     } = { asks: [ask], shared: [] };
     const events: { n: number; event: Record<string, unknown> }[] = [];
     const linked = { server: "https://other.example", alias: "laptop" };
@@ -45,9 +47,25 @@ const fakeComputer = (target: Page) =>
     });
     Object.assign(window, {
       windowCalls: calls,
-      addAsk: (next: typeof ask) => {
+      addAsk: (next: { id: string; path: string; write: boolean; why: string }) => {
         folders.asks.push(next);
         events.push({ n: events.length + 1, event: { type: "folders" } });
+      },
+      /** A chat's session runs a command, as the computer's agent tells it (with the chat the server named). */
+      addRun: (chat: string) => {
+        events.push({
+          n: events.length + 1,
+          event: {
+            type: "wrapper",
+            chat,
+            event: {
+              type: "start",
+              stream: 4,
+              command: "make",
+              startedAt: new Date().toISOString(),
+            },
+          },
+        });
       },
       __TAURI_INTERNALS__: {
         invoke: async (command: string, args?: Record<string, unknown>) => {
@@ -60,8 +78,14 @@ const fakeComputer = (target: Page) =>
           if (command === "access_allow_folder") {
             const asked = folders.asks.find((each) => each.id === args?.id);
             folders.asks = folders.asks.filter((each) => each.id !== args?.id);
+            // The shared folder keeps the chat that asked, as the computer's guard records it.
             if (asked !== undefined)
-              folders.shared.push({ path: asked.path, write: args?.write === true });
+              folders.shared.push({
+                path: asked.path,
+                write: args?.write === true,
+                server: "other.example",
+                chat: asked.chat ?? null,
+              });
             return status();
           }
           if (command === "access_deny_folder") {
@@ -85,7 +109,7 @@ realTest.describe("new UI: an agent asks for a folder of this computer (#20, PLA
   realTest.setTimeout(240_000);
 
   realTest(
-    "the request shows with its reason and what changes can mean; allowed to read, the folder is listed as shared and Remove stops it; another is denied",
+    "the request names the chat that asked and shows its reason and what changes can mean; allowed to read, the folder is listed as shared by that chat and Remove stops it; another, from no named chat, is denied",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/", beforeLoad: fakeComputer });
       await page.getByRole("button", { name: "Agent access", exact: true }).click();
@@ -97,7 +121,7 @@ realTest.describe("new UI: an agent asks for a folder of this computer (#20, PLA
         .getByRole("list", { name: "Folder requests" })
         .getByRole("listitem", { name: `Request for ${ASK.path}` });
       await expect(request).toContainText(
-        `An agent asks to read and change the files in ${ASK.path}.`,
+        `The chat \u201c${ASK.chat}\u201d on ${ASK.server} asks to read and change the files in ${ASK.path}.`,
       );
       await expect(request).toContainText(`Reason given: ${ASK.why}`);
       await expect(request).toContainText(
@@ -112,7 +136,9 @@ realTest.describe("new UI: an agent asks for a folder of this computer (#20, PLA
         .toContainEqual(["access_allow_folder", { id: ASK.id, write: false }]);
       await expect(computer.getByRole("list", { name: "Folder requests" })).toHaveCount(0);
       const shared = computer.getByRole("list", { name: "Shared folders" });
-      await expect(shared.getByRole("listitem")).toHaveText([`${ASK.path}Read onlyRemove`]);
+      await expect(shared.getByRole("listitem")).toHaveText([
+        `${ASK.path}Read only, asked for by \u201c${ASK.chat}\u201d on ${ASK.server}Remove`,
+      ]);
       await page.screenshot({ path: realTest.info().outputPath("folder-shared.png") });
 
       await shared.getByRole("button", { name: `Stop sharing ${ASK.path}` }).click();
@@ -134,6 +160,17 @@ realTest.describe("new UI: an agent asks for a folder of this computer (#20, PLA
         .poll(() => windowCalls(page))
         .toContainEqual(["access_deny_folder", { id: next.id }]);
       await expect(second).toHaveCount(0);
+
+      // A session the server opened for a chat is named by it.
+      await page.evaluate((chat) => {
+        (window as unknown as { addRun: (chat: string) => void }).addRun(chat);
+      }, ASK.chat);
+      await expect(
+        computer
+          .getByRole("list", { name: "Agent sessions on this computer" })
+          .getByRole("listitem")
+          .first(),
+      ).toContainText(`\u201c${ASK.chat}\u201d, session 4`);
       expect(realApp.problems).toEqual([]);
     },
   );

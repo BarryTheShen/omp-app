@@ -281,6 +281,7 @@ switch (command) {
         type: string;
         event?: { type: string; bytes?: string; command?: string };
         text?: string;
+        chat?: string;
         state?: Parameters<typeof stateLine>[0];
       };
       if (
@@ -294,7 +295,8 @@ switch (command) {
           ),
         );
       } else if (event.type === "wrapper" && event.event?.type === "start") {
-        process.stdout.write(`\n▶ ${safeLine(event.event.command ?? "")}\n`);
+        const chat = event.chat === undefined ? "" : `[${safeLine(event.chat)}] `;
+        process.stdout.write(`\n▶ ${chat}${safeLine(event.event.command ?? "")}\n`);
       } else if (event.type === "notice" && event.text !== undefined) {
         process.stdout.write(`\n● ${safeLine(event.text)}\n`);
       } else if (event.type === "state" && event.state !== undefined) {

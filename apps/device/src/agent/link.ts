@@ -41,6 +41,8 @@ export interface LinkDeps {
   readonly allowed?: (threadId: string | null) => boolean;
   /** A chat without a grant tried to reach the machine: its person is asked. */
   readonly onAsk?: (threadId: string, chat: string) => void;
+  /** A session stream is being opened for an allowed chat: what it runs and asks for is named by that chat. */
+  readonly onOpen?: (stream: number, threadId: string | null, chat: string | undefined) => void;
   /** The server (any paired page) asked access off. */
   readonly onOff: () => void;
   readonly onClosed: (code: number, reason: string) => void;
@@ -276,6 +278,7 @@ export class MachineLink {
       return this.#send({ type: "refused", stream: id, reason: "too many sessions this minute" });
     }
     this.#opens.count += 1;
+    this.#deps.onOpen?.(id, threadId, chat);
     const stream: Stream = {
       threadId,
       guard: null,

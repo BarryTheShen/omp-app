@@ -154,6 +154,40 @@ test("the computer keeps the chats allowed to reach it: others are refused and a
   await Bun.sleep(100);
   expect(asked.filter((each) => each.op === "open")).toEqual([{ op: "open", stream: 3 }]);
 
+  // What the chat's session runs and asks for is named by the chat: the terminal line, the panel's events, the folder
+  // request the person is told about, and the request that asks the password.
+  const guardSays = (message: object) =>
+    (watcher as { write(line: string): unknown } | null)?.write(`${JSON.stringify(message)}\n`);
+  guardSays({
+    type: "wrapper",
+    event: {
+      type: "start",
+      stream: 3,
+      run: "r-1",
+      kind: "command",
+      command: "make",
+      folder: "/home/omp-agent",
+      startedAt: new Date().toISOString(),
+    },
+  });
+  const folderAsk = { id: "0123456789abcdef", path: "/home/p/x", write: false, why: "logs" };
+  guardSays({
+    type: "state",
+    state: state({ asks: [{ ...folderAsk, server: "server.example", stream: 3 }] }),
+  });
+  await Bun.sleep(50);
+  expect(told).toContain(
+    "omp agent session on this computer (chat \u201cFix the build\u201d): make (omp-app-device watch shows it)",
+  );
+  expect(events.find((event) => event.type === "wrapper")).toMatchObject({ chat: "Fix the build" });
+  expect(agent.folders.asks).toMatchObject([{ id: folderAsk.id, chat: "Fix the build" }]);
+  expect(told).toContain(
+    "The chat \u201cFix the build\u201d on server.example asks to read /home/p/x: logs. Allow or deny it in Agent access.",
+  );
+  expect(await agent.allowFolder(4242, folderAsk.id, false)).toBeNull();
+  expect(asked.find((each) => each.op === "allow-folder")).toMatchObject({ chat: "Fix the build" });
+  guardSays({ type: "state", state: state() });
+
   // Another chat denied; then the grant removed: the server hears it, and the chat is asked about again.
   link.frame({ type: "ask", threadId: "t-2", chat: "Other" });
   await Bun.sleep(50);

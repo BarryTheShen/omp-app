@@ -11,6 +11,7 @@ import { ChevronDown, ChevronRight, CircleAlert } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ChatTarget } from "../../chat/controller";
+import { useSavedTitle } from "../../chat/savedTitles";
 import { ThisComputer } from "./ThisComputer";
 import { clock, timeLeft } from "./time";
 
@@ -71,6 +72,8 @@ function ActivityRow({
 }): ReactNode {
   const { threadId } = activity;
   const { record } = activity;
+  // The chat's name as the chat list has it (undefined for a chat the list has not read).
+  const chat = useSavedTitle(threadId as ThreadId | null);
   const seconds =
     record.endedAt === null
       ? 0
@@ -90,7 +93,11 @@ function ActivityRow({
       <span className="text-xs text-t3">
         {alias ?? "Unknown computer"} · {new Date(record.startedAt).toLocaleTimeString()} · {ended}
         {record.sudo ? " · sudo allowed" : ""}
-        {activity.threadId === null ? " · not from a chat" : ""}
+        {activity.threadId === null
+          ? " · not from a chat"
+          : chat === undefined
+            ? ""
+            : ` · “${chat}”`}
       </span>
       {!activity.verified && (
         <span className="flex items-center gap-1 text-xs text-bad-ink">
@@ -106,7 +113,7 @@ function ActivityRow({
             openChat({ kind: "existing", threadId: threadId as ThreadId, sessionFile: null })
           }
         >
-          Open the chat
+          {chat === undefined ? "Open the chat" : `Open “${chat}”`}
         </button>
       )}
     </li>

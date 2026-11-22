@@ -753,9 +753,14 @@ fn take(app: &AppHandle, event: Value) {
             });
         }
         Some("wrapper") if event["event"]["type"].as_str() == Some("start") => {
-            // A lasting notification and the red tray icon say an agent is at work; what it runs shows in the panel.
+            // A lasting notification and the red tray icon say an agent is at work; what it runs shows in the panel. The
+            // chat the session is for names it, when the server said.
             let command = notification_text(event["event"]["command"].as_str().unwrap_or(""), 200);
-            commands::notify_lasting("omp agent is controlling this computer", &command);
+            let body = match event["chat"].as_str() {
+                Some(chat) => format!("\u{201c}{}\u{201d}: {command}", notification_text(chat, 120)),
+                None => command,
+            };
+            commands::notify_lasting("omp agent is controlling this computer", &body);
         }
         // A request's own notification comes from the `chats` and `folders` events below, so its notice is not shown.
         Some("notice") if event["kind"].as_str() == Some("request") => {}
@@ -821,10 +826,15 @@ fn folder_requests(folders: &Value) -> Vec<RequestNotice> {
             let how = if ask["write"].as_bool().unwrap_or(false) { "read and change" } else { "read" };
             let why = notification_text(ask["why"].as_str().unwrap_or(""), 300);
             let reason = if why.is_empty() { String::new() } else { format!(": {why}") };
+            // The chat that asked names the request in the body, where text is escaped as the chats' requests are.
+            let (who, from) = match ask["chat"].as_str() {
+                Some(chat) => ("A chat", format!("\u{201c}{}\u{201d} asks for ", notification_text(chat, 120))),
+                None => ("An agent", String::new()),
+            };
             Some((
                 format!("folder:{id}"),
-                format!("An agent asks to {how} a folder"),
-                format!("{path}{reason}. Click to open Agent access, where Allow asks your password."),
+                format!("{who} asks to {how} a folder"),
+                format!("{from}{path}{reason}. Click to open Agent access, where Allow asks your password."),
             ))
         })
         .collect()
@@ -1060,14 +1070,14 @@ mod tests {
 
         let folders = json!({ "asks": [
             { "id": "a1", "path": "~/Documents", "write": false, "why": "read the notes", "server": null },
-            { "id": "a2", "path": "~/code", "write": true, "why": "", "server": null },
+            { "id": "a2", "path": "~/code", "write": true, "why": "", "server": null, "chat": "Fix <b>it</b>" },
         ], "shared": [] });
         let asked = folder_requests(&folders);
         assert_eq!(asked.iter().map(|each| each.0.as_str()).collect::<Vec<_>>(), ["folder:a1", "folder:a2"]);
         assert_eq!(asked[0].1, "An agent asks to read a folder");
         assert!(asked[0].2.starts_with("~/Documents: read the notes. Click"));
-        assert_eq!(asked[1].1, "An agent asks to read and change a folder");
-        assert!(asked[1].2.starts_with("~/code. Click"));
+        assert_eq!(asked[1].1, "A chat asks to read and change a folder");
+        assert!(asked[1].2.starts_with("\u{201c}Fix &lt;b&gt;it&lt;/b&gt;\u{201d} asks for ~/code. Click"));
         // A guard before folder requests sends none: no notifications.
         assert!(folder_requests(&json!({})).is_empty());
         assert!(chat_requests(&json!({})).is_empty());

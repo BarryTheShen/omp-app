@@ -73,6 +73,8 @@ const GuardStateBody = z.object({
         write: z.boolean(),
         why: z.string(),
         server: z.string().nullable(),
+        /** The session that asked: its chat names the request. */
+        stream: z.number().optional(),
       }),
     )
     .default([]),
@@ -84,14 +86,18 @@ const GuardStateBody = z.object({
         write: z.boolean(),
         server: z.string().nullable(),
         grantedAt: z.string(),
+        /** The chat whose request it was; null when the person shared it themselves; absent on older records. */
+        chat: z.string().nullable().optional(),
       }),
     )
     .default([]),
 });
 
-/** Agents' folder requests waiting for the person, and the folders shared with agents. */
+/** Agents' folder requests waiting for the person (each named by the chat that asked), and the folders shared. */
 export interface Folders {
-  readonly asks: z.infer<typeof GuardStateBody>["asks"];
+  readonly asks: readonly (z.infer<typeof GuardStateBody>["asks"][number] & {
+    readonly chat?: string;
+  })[];
   readonly shared: z.infer<typeof GuardStateBody>["shared"];
 }
 
@@ -149,7 +155,8 @@ export interface AgentOptions {
 /** What the agent tells its watchers (the desktop window, `omp-app-device watch`). */
 export type AgentEvent =
   | { readonly type: "state"; readonly state: AccessState; readonly linked: boolean }
-  | { readonly type: "wrapper"; readonly event: WrapperEvent }
+  /** What a session ran or showed, and the chat the session is for (when the server named it). */
+  | { readonly type: "wrapper"; readonly event: WrapperEvent; readonly chat?: string }
   /**
    * Something the person should hear about: sudo allowed, a folder or chat request, the summary when access turns off.
    * `request` marks a chat's or folder's request: the desktop window shows its own lasting notification for each
@@ -218,6 +225,8 @@ export class Agent {
   #folders: Folders = { asks: [], shared: [] };
   /** Folder requests already told about. */
   #asksTold = new Set<string>();
+  /** The chat each session stream was opened for, by stream (the last 500): what a session runs or asks is named by it. */
+  readonly #sessionChats = new Map<number, string>();
   /** The requests this agent shows itself while no window watches, by request (`chat:<thread>`, `folder:<id>`). */
   readonly #popups = new Map<string, Popup>();
   /** The chats allowed to reach this computer (`chat-grants.json`). */
@@ -533,6 +542,12 @@ export class Agent {
     }
   }
 
+  /** " on <server host>", for naming a chat in a line for the person; empty when the server is not known. */
+  #onServer(): string {
+    const { server } = this.#server();
+    return server === undefined ? "" : ` on ${server}`;
+  }
+
   /** `minutes` more while on (`callerPid` asks the password). */
   async extend(callerPid: number, minutes: number): Promise<string | null> {
     const answer = await guardRequest(
@@ -610,11 +625,22 @@ export class Agent {
     return answer.ok ? null : answer.reason;
   }
 
-  /** Allows an agent's folder request (`callerPid` asks the password), to read it or also to change it. */
+  /**
+   * Allows an agent's folder request (`callerPid` asks the password), to read it or also to change it; the dialog and the
+   * shared folder name the chat that asked.
+   */
   async allowFolder(callerPid: number, id: string, write: boolean): Promise<string | null> {
+    const chat = this.#folders.asks.find((ask) => ask.id === id)?.chat;
     const answer = await guardRequest(
       this.#options.guardSocket,
-      { op: "allow-folder", pid: callerPid, id, write, ...this.#server() },
+      {
+        op: "allow-folder",
+        pid: callerPid,
+        id,
+        write,
+        ...(chat === undefined ? {} : { chat }),
+        ...this.#server(),
+      },
       PASSWORD_WAIT_MS,
     );
     return answer.ok ? null : answer.reason;
@@ -671,14 +697,18 @@ export class Agent {
     for (const ask of folders.asks) {
       if (this.#asksTold.has(ask.id)) continue;
       this.#asksTold.add(ask.id);
+      const how = ask.write ? "read and change" : "read";
+      const who =
+        ask.chat === undefined ? "An agent" : `The chat \u201c${ask.chat}\u201d${this.#onServer()}`;
+      const why = ask.why === "" ? "" : `: ${ask.why}`;
       this.#notice(
-        `An agent asks to ${ask.write ? "read and change" : "read"} ${ask.path}${ask.why === "" ? "" : `: ${ask.why}`}. Allow or deny it in Agent access.`,
+        `${who} asks to ${how} ${ask.path}${why}. Allow or deny it in Agent access.`,
         "request",
       );
       this.#popup(
         `folder:${ask.id}`,
-        `An agent asks to ${ask.write ? "read and change" : "read"} a folder`,
-        `${ask.path}${ask.why === "" ? "" : `: ${ask.why}`}. Click to open Agent access, where Allow asks your password.`,
+        `${ask.chat === undefined ? "An agent" : "A chat"} asks to ${how} a folder`,
+        `${ask.chat === undefined ? "" : `\u201c${ask.chat}\u201d asks for `}${ask.path}${why}. Click to open Agent access, where Allow asks your password.`,
       );
     }
     const waiting = new Set(folders.asks.map((ask) => ask.id));
@@ -741,6 +771,15 @@ export class Agent {
       grants: () => (this.#chats?.of(machine.serverOrigin) ?? []).map((grant) => grant.threadId),
       allowed: (threadId) => this.#chats?.allowed(machine.serverOrigin, threadId) ?? false,
       onAsk: (threadId, chat) => this.#chatAsked(threadId, chat),
+      onOpen: (stream, threadId, chat) => {
+        this.#sessionChats.delete(stream);
+        // "A chat" is what a server sends for a chat it has no name for: nothing to name the session by.
+        const name = threadId === null || chat === undefined ? "A chat" : chatName(chat);
+        if (name === "A chat") return;
+        this.#sessionChats.set(stream, name);
+        if (this.#sessionChats.size > 500)
+          this.#sessionChats.delete(this.#sessionChats.keys().next().value as number);
+      },
       onOff: () => void this.off(),
       onClosed: (code, reason) => {
         if (this.#link !== link) return;
@@ -778,7 +817,13 @@ export class Agent {
       const review = { pending: state.data.reviewPending, changed: state.data.changed };
       const reviewChanged = review.pending !== this.#review.pending;
       this.#review = review;
-      this.#takeFolders({ asks: state.data.asks, shared: state.data.shared });
+      this.#takeFolders({
+        asks: state.data.asks.map((ask) => {
+          const chat = ask.stream === undefined ? undefined : this.#sessionChats.get(ask.stream);
+          return chat === undefined ? ask : { ...ask, chat };
+        }),
+        shared: state.data.shared,
+      });
       if (!state.data.on) this.#stopping = false;
       // On at the guard, but neither on here nor being turned on or off here: this agent restarted while access was on.
       // Nothing here shows or controls that access any more, so it goes off.
@@ -848,7 +893,8 @@ export class Agent {
     const parsed = WrapperEvent.safeParse(message.event);
     if (!parsed.success) return;
     const event = parsed.data;
-    this.#tell({ type: "wrapper", event });
+    const chat = this.#sessionChats.get(event.stream);
+    this.#tell(chat === undefined ? { type: "wrapper", event } : { type: "wrapper", event, chat });
     if (event.type === "start") {
       this.#startRecord(event);
       if (this.#tally !== null) {
@@ -857,7 +903,7 @@ export class Agent {
       }
       const tell = this.#options.tellTerminals ?? tellTerminals;
       void tell(
-        `omp agent session on this computer: ${event.command.slice(0, 200)} (omp-app-device watch shows it)`,
+        `omp agent session on this computer${chat === undefined ? "" : ` (chat \u201c${chat}\u201d)`}: ${event.command.slice(0, 200)} (omp-app-device watch shows it)`,
       );
     }
     if (event.type === "end") this.#endRecord(event);

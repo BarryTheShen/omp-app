@@ -23,12 +23,18 @@ interface FolderAsk {
   readonly path: string;
   readonly write: boolean;
   readonly why: string;
+  /** The server whose chat asked (a host), and the chat, when this computer's agent knows them. */
+  readonly server?: string | null;
+  readonly chat?: string;
 }
 
 /** A folder shared with agents: reachable while access is on. */
 interface SharedFolder {
   readonly path: string;
   readonly write: boolean;
+  readonly server?: string | null;
+  /** The chat whose request it was; null when the person shared it; absent on older folders. */
+  readonly chat?: string | null;
 }
 
 /** A chat asking to reach this computer, or one allowed to (PLAN §7f). */
@@ -75,6 +81,8 @@ interface Done {
 /** One agent session as this computer saw it: the commands it ran, and the text its terminal showed. */
 interface Session {
   readonly stream: number;
+  /** The chat the session is for, when the server named it. */
+  readonly chat?: string;
   readonly commands: readonly { readonly text: string; readonly exit: string | null }[];
   readonly text: string;
 }
@@ -258,6 +266,7 @@ export function ThisComputer({
         if (event.type === "state" || event.type === "folders" || event.type === "chats")
           stateChanged = true;
         if (event.type !== "wrapper") continue;
+        const chat = typeof event.chat === "string" ? event.chat : undefined;
         const each = event.event as {
           type: string;
           stream: number;
@@ -268,6 +277,7 @@ export function ThisComputer({
         };
         const was = told.current.get(each.stream) ?? {
           stream: each.stream,
+          ...(chat === undefined ? {} : { chat }),
           commands: [],
           text: "",
         };
@@ -294,7 +304,7 @@ export function ThisComputer({
               { text: last.text, exit: String(each.exitCode ?? "?") },
             ];
         }
-        told.current.set(each.stream, { stream: each.stream, commands, text });
+        told.current.set(each.stream, { ...was, commands, text });
       }
       // Newest session first.
       setSessions([...told.current.values()].sort((a, b) => b.stream - a.stream));
@@ -484,7 +494,18 @@ export function ThisComputer({
                 className="rounded-md border border-l2 px-3 py-2 text-xs"
               >
                 <p className="text-t2 [overflow-wrap:anywhere]">
-                  An agent asks to {ask.write ? "read and change" : "read"} the files in{" "}
+                  {ask.chat === undefined ? (
+                    "An agent"
+                  ) : (
+                    <>
+                      The chat{" "}
+                      <span className="font-medium text-t1">
+                        “{ask.chat.replace(REORDERING, "")}”
+                      </span>
+                      {typeof ask.server === "string" && ask.server !== "" && ` on ${ask.server}`}
+                    </>
+                  )}{" "}
+                  asks to {ask.write ? "read and change" : "read"} the files in{" "}
                   <code className="text-t1">{ask.path.replace(REORDERING, "")}</code>.
                 </p>
                 {ask.why !== "" && (
@@ -652,7 +673,11 @@ export function ThisComputer({
           <ol aria-label="Agent sessions on this computer" className="mt-1 flex flex-col gap-2">
             {sessions.map((session) => (
               <li key={session.stream} className="rounded-md border border-l2 px-3 py-2">
-                <p className="text-xs font-medium text-t2">Session {session.stream}</p>
+                <p className="text-xs font-medium text-t2 [overflow-wrap:anywhere]">
+                  {session.chat === undefined
+                    ? `Session ${session.stream}`
+                    : `“${session.chat.replace(REORDERING, "")}”, session ${session.stream}`}
+                </p>
                 <ol className="mt-1 list-decimal pl-5 text-xs text-t3">
                   {session.commands.map((command, index) => (
                     // Commands only append: the place is the identity.
@@ -718,6 +743,11 @@ export function ThisComputer({
                   <code className="block text-t1">{folder.path.replace(REORDERING, "")}</code>
                   <span className="block text-t3">
                     {folder.write ? "Read and change" : "Read only"}
+                    {folder.chat === null
+                      ? ", shared by you"
+                      : typeof folder.chat === "string"
+                        ? `, asked for by “${folder.chat.replace(REORDERING, "")}”${typeof folder.server === "string" && folder.server !== "" ? ` on ${folder.server}` : ""}`
+                        : ""}
                   </span>
                 </span>
                 <Button
