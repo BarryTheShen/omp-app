@@ -45,6 +45,8 @@ function harness(
   const closed: [number, string][] = [];
   const activity: AccessActivity[] = [];
   const left: string[] = [];
+  /** The notices the link put into chats: [thread, text]. */
+  const notices: [string, string][] = [];
   let timer: (() => void) | null = null;
   const link = new AccessLink({
     send: (frame) => sent.push(frame),
@@ -57,6 +59,7 @@ function harness(
     onState: () => undefined,
     onActivity: (_link, each) => activity.push(each),
     onLeave: (leaving) => left.push(leaving.machine?.id ?? "none"),
+    notify: (threadId, text) => notices.push([threadId, text]),
     ...(options.now === undefined ? {} : { now: options.now }),
     setTimer: (fn) => {
       timer = fn;
@@ -108,6 +111,7 @@ function harness(
     closed,
     activity,
     left,
+    notices,
     frame,
     auth,
     on,
@@ -230,6 +234,74 @@ describe("a machine's access link (#20)", () => {
     grants(["thread-2"]);
     expect(allowed.events).toContain("close: this chat's access to this computer was removed");
     expect(h.link.grants).toEqual(["thread-2"]);
+  });
+
+  test("what a chat waits for on the machine reaches it as a notice: access given, taken away or denied, and a folder request answered", () => {
+    const h = harness();
+    h.auth();
+    const grants = (list: string[]) =>
+      h.frame({
+        type: "state",
+        state: { on: true, until: "2026-11-16T22:00:00Z", sessions: 0, sudoUntil: null },
+        reviewPending: false,
+        grants: list,
+      });
+    // The grants the machine has when the link opens are no news to anyone.
+    grants(["thread-old"]);
+    expect(h.notices).toEqual([]);
+    // A chat is refused, told the answer comes as a notice, and hears it when the person allows it.
+    expect(h.link.openStream("thread-1", sink().value, "Fix the build")).toContain(
+      "their answer comes into this chat as a notice",
+    );
+    grants(["thread-old", "thread-1"]);
+    expect(h.notices).toEqual([
+      [
+        "thread-1",
+        "laptop's owner allowed this chat to reach that computer: it can run commands there whenever agent access is on.",
+      ],
+    ]);
+    // Taken away again.
+    grants(["thread-old"]);
+    expect(h.notices.at(-1)).toEqual([
+      "thread-1",
+      "laptop's owner took this chat's access to that computer away; any session it had there ended.",
+    ]);
+    // Denied: only a chat the link asked about hears it; another chat's id from the machine is ignored.
+    h.link.openStream("thread-2", sink().value, "Other");
+    h.frame({ type: "chat-denied", threadId: "thread-2" });
+    h.frame({ type: "chat-denied", threadId: "thread-never-asked" });
+    expect(h.notices.slice(2)).toEqual([
+      [
+        "thread-2",
+        "laptop's owner did not allow this chat to reach that computer. Do not try again unless they say so.",
+      ],
+    ]);
+    // A folder asked for from a session: the answer reaches the chat whose stream it was, also after the stream closed.
+    const opened = h.link.openStream("thread-old", sink().value);
+    if (typeof opened === "string") throw new Error(opened);
+    opened.close();
+    h.frame({
+      type: "folder-answer",
+      stream: opened.stream,
+      path: "/home/person/projects\u0007",
+      answer: "allowed",
+      at: "/run/omp-app-device/shared/projects",
+      write: false,
+    });
+    h.frame({
+      type: "folder-answer",
+      stream: opened.stream,
+      path: "/home/person/x",
+      answer: "denied",
+    });
+    h.frame({ type: "folder-answer", stream: 99, path: "/home/person/y", answer: "denied" });
+    expect(h.notices.slice(3)).toEqual([
+      [
+        "thread-old",
+        "On laptop, the owner shared /home/person/projects (read only): it is at /run/omp-app-device/shared/projects while agent access is on.",
+      ],
+      ["thread-old", "On laptop, the owner did not share /home/person/x."],
+    ]);
   });
 
   test("bytes wait for the machine to open the session, then go within its window until it acknowledges", async () => {

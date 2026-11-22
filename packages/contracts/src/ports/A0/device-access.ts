@@ -243,6 +243,24 @@ export const MachineAccessFrame = z.discriminatedUnion("type", [
    * it, as Remove in the panel does. Only on an authenticated link, so only the machine's own key can ask it.
    */
   z.strictObject({ type: z.literal("leave") }),
+  /**
+   * The machine's person turned a chat's request down (a grant shows in `state`'s `grants` instead): the server tells the
+   * chat, so it neither waits nor tries again.
+   */
+  z.strictObject({ type: z.literal("chat-denied"), threadId: z.string().min(1).max(200) }),
+  /**
+   * The person answered a folder request an agent made from a session (`omp-app-device ask-folder`, which returns at
+   * once): the server tells the chat whose stream it was. `at` is where the folder is reached, when allowed.
+   */
+  z.strictObject({
+    type: z.literal("folder-answer"),
+    stream: StreamId,
+    path: z.string().max(4_096),
+    answer: z.enum(["allowed", "denied", "no answer"]),
+    at: z.string().max(4_096).optional(),
+    write: z.boolean().optional(),
+    reason: z.string().max(300).optional(),
+  }),
 ]);
 export type MachineAccessFrame = z.infer<typeof MachineAccessFrame>;
 

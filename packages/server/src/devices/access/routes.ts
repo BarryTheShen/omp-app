@@ -50,6 +50,8 @@ export async function openDeviceAccess(options: {
   readonly chatName?: (threadId: string) => Promise<string | null>;
   readonly onMachinesChanged: (machines: AccessMachine[]) => void;
   readonly onActivity: (activity: AccessActivity) => void;
+  /** Puts a notice into a chat (agent access given, taken away or denied; a folder request answered). */
+  readonly notify?: (threadId: string, text: string) => void;
   readonly logger?: Logger;
   /** The host names the server account's ssh already knows (`hostsInSshConfig`), replaced in tests. */
   readonly knownHosts?: () => Promise<ReadonlySet<string>>;
@@ -74,6 +76,7 @@ export async function openDeviceAccess(options: {
     ...(options.chatName === undefined ? {} : { chatName: options.chatName }),
     onMachinesChanged: options.onMachinesChanged,
     onActivity: options.onActivity,
+    ...(options.notify === undefined ? {} : { notify: options.notify }),
     ...(options.logger === undefined ? {} : { logger: options.logger }),
   });
   const stopProxy = await listenAccessProxy(accessProxySocket(runtime), hub, options.logger);

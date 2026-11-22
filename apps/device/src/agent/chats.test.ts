@@ -158,7 +158,23 @@ test("the computer keeps the chats allowed to reach it: others are refused and a
   link.frame({ type: "ask", threadId: "t-2", chat: "Other" });
   await Bun.sleep(50);
   expect(agent.denyChat("t-2")).toBeNull();
+  // The server hears the denial, so the chat is told instead of waiting.
+  expect(link.last("chat-denied")).toEqual({ type: "chat-denied", threadId: "t-2" });
   expect(agent.chats.requests).toEqual([]);
+  // The person answered a folder request: the server hears it with the request's stream; allowed but not mounted counts
+  // as not shared.
+  // Set inside the guard's callback: TypeScript cannot see that, so it is named again here.
+  (watcher as { write(line: string): unknown } | null)?.write(
+    `${JSON.stringify({ type: "folder-answer", stream: 7, path: "/home/p/x", answer: "refused", reason: "no mount" })}\n`,
+  );
+  await Bun.sleep(50);
+  expect(link.last("folder-answer")).toEqual({
+    type: "folder-answer",
+    stream: 7,
+    path: "/home/p/x",
+    answer: "no answer",
+    reason: "no mount",
+  });
   expect(await agent.removeChat("t-1")).toBeNull();
   expect(link.last("state")).toMatchObject({ grants: [] });
   expect(await agent.removeChat("t-1")).toBe("that chat has no access");

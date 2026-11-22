@@ -15,6 +15,13 @@ import {
 import { ed25519Verifies, newNonce } from "./keys";
 import type { SavedMachine } from "./store";
 
+/** Control and direction characters: a machine's text in a chat's notice is one plain line. */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: removing control characters is the point
+const UNSHOWN = /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g;
+
+/** A machine's text in a chat's notice: one line, at most 300 characters. */
+const oneLine = (text: string): string => text.replace(UNSHOWN, " ").trim().slice(0, 300);
+
 /** Close codes the link ends with. */
 export const LINK_CLOSE = {
   badFrame: 4400,
@@ -68,6 +75,11 @@ export interface LinkDeps {
   readonly onActivity: (link: AccessLink, activity: AccessActivity) => void;
   /** The machine asked to be forgotten (it is being removed from agent access). */
   readonly onLeave: (link: AccessLink) => void;
+  /**
+   * Something a chat waits for was answered on the machine (its access given, taken away or denied; a folder it asked
+   * for): the text goes into that chat as a notice, so it neither waits nor polls.
+   */
+  readonly notify?: (threadId: string, text: string) => void;
   readonly now?: () => number;
   readonly setTimer?: (fn: () => void, ms: number) => { cancel(): void };
 }
@@ -93,6 +105,10 @@ export class AccessLink {
   #nonce = "";
   #nextStream = 1;
   readonly #streams = new Map<number, OpenStream>();
+  /** The chat each stream of this link was opened for, kept after it closes: a folder answer may come later. */
+  readonly #streamChats = new Map<number, string>();
+  /** The chats this link asked the machine about, still unanswered: only these may hear that they were denied. */
+  readonly #asked = new Set<string>();
   #closed = false;
   #records = { minute: 0, count: 0 };
   #lastSeq = 0;
@@ -218,11 +234,14 @@ export class AccessLink {
         }
         if (frame.state.on && frame.reach !== undefined) this.#reach = frame.reach;
         if (frame.grants !== undefined) {
+          const before = this.#grants;
           this.#grants = new Set(frame.grants);
           // A chat whose access was taken away: its sessions end here too.
           for (const [id, stream] of this.#streams)
             if (stream.threadId === null || !this.#grants.has(stream.threadId))
               this.closeStream(id, "this chat's access to this computer was removed");
+          // The first grants after the link opened are no change: the chats hear only what changed while linked.
+          if (before !== null) this.#tellGrants(before, this.#grants);
         }
         this.#deps.onState(this);
         return undefined;
@@ -281,6 +300,29 @@ export class AccessLink {
       case "leave":
         this.#deps.onLeave(this);
         return undefined;
+      case "chat-denied": {
+        // Only a chat this link asked about: a machine cannot put words into chats that never tried to reach it.
+        if (this.#asked.delete(frame.threadId))
+          this.#notify(
+            frame.threadId,
+            `${machine.alias}'s owner did not allow this chat to reach that computer. Do not try again unless they say so.`,
+          );
+        return undefined;
+      }
+      case "folder-answer": {
+        const threadId = this.#streamChats.get(frame.stream);
+        if (threadId === undefined) return undefined;
+        const path = oneLine(frame.path);
+        this.#notify(
+          threadId,
+          frame.answer === "allowed"
+            ? `On ${machine.alias}, the owner shared ${path} (${frame.write === true ? "read and change" : "read only"}): it is at ${oneLine(frame.at ?? "")} while agent access is on.`
+            : frame.answer === "denied"
+              ? `On ${machine.alias}, the owner did not share ${path}.`
+              : `On ${machine.alias}, ${path} was not shared: ${oneLine(frame.reason ?? "no answer").replace(/\.$/, "")}.`,
+        );
+        return undefined;
+      }
       case "record": {
         const record = frame.record;
         const minute = Math.floor((this.#deps.now ?? Date.now)() / 60_000);
@@ -317,6 +359,30 @@ export class AccessLink {
     }
   }
 
+  /** Each chat whose access the machine's person gave or took away while linked hears it. */
+  #tellGrants(before: ReadonlySet<string>, now: ReadonlySet<string>): void {
+    const alias = this.#machine?.alias ?? "The computer";
+    for (const threadId of now)
+      if (!before.has(threadId)) {
+        this.#asked.delete(threadId);
+        this.#notify(
+          threadId,
+          `${alias}'s owner allowed this chat to reach that computer: it can run commands there whenever agent access is on.`,
+        );
+      }
+    for (const threadId of before)
+      if (!now.has(threadId))
+        this.#notify(
+          threadId,
+          `${alias}'s owner took this chat's access to that computer away; any session it had there ended.`,
+        );
+  }
+
+  /** The notice's own tag names its source (`agent-access`), and the chat shows it under "Agent access". */
+  #notify(threadId: string, text: string): void {
+    this.#deps.notify?.(threadId, text);
+  }
+
   /**
    * Opens a session stream for an `ssh` (its chat, or null). Refused while the machine is off, has a review pending, or
    * runs the most streams already. A machine that keeps chat grants (PLAN §7f) gets streams only for the chats it allows:
@@ -331,13 +397,20 @@ export class AccessLink {
       if (threadId === null) return "only a chat in omp-app can reach this computer";
       if (!this.#grants.has(threadId)) {
         this.#deps.send({ type: "ask", threadId, chat: name });
-        return "this chat has no access to this computer yet: its owner was asked to allow it there; try again once they have";
+        this.#asked.add(threadId);
+        return "this chat has no access to this computer yet: its owner was asked; their answer comes into this chat as a notice, so do not try again until then";
       }
     }
     if (this.#streams.size >= ACCESS_LIMITS.streams) return "too many sessions";
     const stream = this.#nextStream;
     this.#nextStream += 1;
     this.#streams.set(stream, { sink, threadId, unacked: 0, waiting: [], opened: false });
+    if (threadId !== null) {
+      this.#streamChats.set(stream, threadId);
+      // A link's streams are counted from 1: the oldest are forgotten past a few hundred.
+      if (this.#streamChats.size > 500)
+        this.#streamChats.delete(this.#streamChats.keys().next().value as number);
+    }
     this.#deps.send(
       this.#grants === null
         ? { type: "open", stream, threadId }

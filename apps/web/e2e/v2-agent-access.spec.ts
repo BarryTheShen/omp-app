@@ -32,6 +32,8 @@ interface Computer {
   /** The frames the server sent it, by type. */
   readonly heard: string[];
   sendState(on: boolean): void;
+  /** Says on, with the chats allowed to reach it: a computer that keeps chat grants. */
+  sendGrants(threadIds: readonly string[]): void;
   sendRecord(record: Omit<AccessRecord, "machineId" | "signature">, forged?: boolean): void;
   close(): void;
 }
@@ -72,6 +74,7 @@ async function enrollComputer(page: Page, alias: string): Promise<Computer> {
   const link = new WebSocket(`${origin.replace(/^http/, "ws")}${DEVICE_ACCESS_PATHS.link}`);
   const send = (frame: object) => link.send(JSON.stringify(frame));
   let on = false;
+  let grants: readonly string[] | undefined;
   const stateFrame = () => ({
     type: "state",
     state: on
@@ -84,6 +87,7 @@ async function enrollComputer(page: Page, alias: string): Promise<Computer> {
       : { on: false },
     reviewPending: false,
     ...(on ? { reach: ["the internet (via eth0)", "192.168.1.0/24, 3 machines (via eth0)"] } : {}),
+    ...(grants === undefined ? {} : { grants }),
   });
   const authed = new Promise<void>((done, failed) => {
     link.addEventListener("error", () => failed(new Error("the access link failed")));
@@ -114,6 +118,11 @@ async function enrollComputer(page: Page, alias: string): Promise<Computer> {
     heard,
     sendState(next) {
       on = next;
+      send(stateFrame());
+    },
+    sendGrants(threadIds) {
+      on = true;
+      grants = threadIds;
       send(stateFrame());
     },
     sendRecord(fields, forged = false) {
@@ -270,4 +279,43 @@ realTest.describe("new UI: agent access to your computers (#20)", () => {
       }
     },
   );
+
+  realTest.describe("a chat waiting on the computer's owner", () => {
+    realTest.use({ seedLongTurn: 2 });
+
+    realTest(
+      "the owner's answer reaches the chat as an Agent access notice, not as the person's message",
+      async ({ realApp }) => {
+        const page = await realApp.open({ path: "/" });
+        const computer = await enrollComputer(page, "laptop");
+        try {
+          // The chats allowed when the link opens are no news; then the owner allows the seeded chat.
+          computer.sendGrants([]);
+          await page
+            .getByRole("navigation", { name: "Chats" })
+            .getByRole("button", { name: /^Run the long job/ })
+            .click();
+          const transcript = page.getByRole("region", { name: "Transcript" });
+          await expect(transcript.getByText("All 2 steps are done.")).toBeVisible({
+            timeout: 60_000,
+          });
+          computer.sendGrants(["01a11111-0000-7000-8000-000000000001"]);
+          const notice = transcript.getByText(
+            "laptop's owner allowed this chat to reach that computer",
+            { exact: false },
+          );
+          await expect(notice).toBeVisible({ timeout: 90_000 });
+          await expect(transcript.getByText("Agent access", { exact: true })).toBeVisible();
+          // A notice, never a message bubble of the person's.
+          await expect(
+            transcript.locator(".tr-row--user", { hasText: "laptop's owner" }),
+          ).toHaveCount(0);
+          await page.screenshot({ path: realTest.info().outputPath("access-notice.png") });
+        } finally {
+          computer.close();
+        }
+        expect(realApp.problems).toEqual([]);
+      },
+    );
+  });
 });

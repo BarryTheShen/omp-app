@@ -22,6 +22,8 @@ export interface AccessHubDeps {
   readonly chatName?: (threadId: string) => Promise<string | null>;
   readonly onMachinesChanged: (machines: AccessMachine[]) => void;
   readonly onActivity: (activity: AccessActivity) => void;
+  /** Puts a notice into a chat (agent access given, taken away or denied; a folder request answered). */
+  readonly notify?: (threadId: string, text: string) => void;
   readonly logger?: Logger;
 }
 
@@ -102,6 +104,10 @@ export class AccessHub {
         void this.#deps.store
           .remove(machine.id)
           .catch((error: unknown) => this.#warn("leave", error));
+      },
+      notify: (threadId, text) => {
+        this.#deps.logger?.info("device_access.notice", { thread: threadId });
+        this.#deps.notify?.(threadId, text);
       },
     });
     link.start();

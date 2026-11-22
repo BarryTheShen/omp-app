@@ -597,9 +597,10 @@ export class Guard {
   /**
    * An agent's request for a folder of the person's, on a session's own records connection. Refused at once when the
    * folder may not be shared (`checkFolder`), when access is off, or when three requests already wait; answered at once
-   * when a shared folder covers it already; else it waits for the person (`allowFolder`, `denyFolder`) up to 10 minutes,
-   * and is withdrawn when its connection closes. A folder inside a shared one that does not cover it is refused, so
-   * mount points never nest: each stays a folder of the guard's own.
+   * when a shared folder covers it already. Else the agent hears "asked" at once and does not wait: the request stays
+   * for the person (`allowFolder`, `denyFolder`) up to 10 minutes, and their answer goes out as a `folder-answer` event
+   * with the request's stream, which the person's agent passes on so the chat hears it as a notice. A folder inside a
+   * shared one that does not cover it is refused, so mount points never nest: each stays a folder of the guard's own.
    */
   #ask(
     event: Extract<WrapperEvent, { type: "ask-folder" }>,
@@ -667,7 +668,7 @@ export class Guard {
         server: this.#server ?? null,
         reply: (reply) => {
           clearTimeout(timer);
-          answer(reply);
+          this.#tell({ type: "folder-answer", stream: event.stream, path: check.path, ...reply });
         },
       });
       this.#options.log(
@@ -679,6 +680,9 @@ export class Guard {
         }),
       );
       this.#tell({ type: "state", state: this.state() });
+      // The request no longer depends on its connection: the agent goes on, and hears the answer in its chat.
+      socket.data.closed = null;
+      answer({ answer: "asked" });
     })();
   }
 

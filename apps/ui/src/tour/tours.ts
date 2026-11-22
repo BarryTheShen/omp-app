@@ -3505,11 +3505,40 @@ const TOOL_GROUPS_TOUR: Tour = {
   ],
 };
 
+/** Agent access given without being asked, and its answers reaching the chats as notices (2026-11-22). */
+const ACCESS_GRANTS_TOUR: Tour = {
+  id: "access-grants-2026-11-22",
+  title: "Give access first; answers come to the chat",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Agent access",
+      text: "Click <b>Agent access</b> on this rail.",
+      action: { kind: "appears", selector: ACCESS_PANEL },
+    },
+    {
+      target: ACCESS_PANEL,
+      title: "Give access first",
+      text: "In the desktop app on a computer with agent access, <b>This computer</b> now offers <b>Give a chat access</b> (the chat open beside the panel first, then recent ones) and <b>Share a folder</b> by its path, each with your password, so an agent need not ask first. When a chat does ask, or asks for a folder, your answer comes into that chat as an <b>Agent access</b> notice: it neither waits nor tries again.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-22-access-grants",
+    when: "2026-11-22T23:10:00Z",
+    summary:
+      "Agent access: in the desktop app's Agent access panel, give a chat access or share a folder yourself, without an agent asking first. When an agent does ask (for a chat's access or a folder), your answer comes into its chat as an Agent access notice, so it neither waits nor tries again.",
+    tours: [ACCESS_GRANTS_TOUR],
+  },
   {
     id: "2026-11-21-tool-groups",
     when: "2026-11-21T07:50:00Z",

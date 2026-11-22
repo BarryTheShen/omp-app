@@ -9,6 +9,7 @@ import {
   FolderPath,
   SessionFilePath,
   ThreadId,
+  withAppNotice,
 } from "@omp-app/contracts";
 import { CHAT_HOST_FEATURES, CHAT_HOST_PROTOCOL_VERSION } from "@omp-app/contracts/chat-host";
 import serverPackage from "../package.json";
@@ -815,7 +816,9 @@ export async function createCompositionServer(
   // Device pairing: each device has a key of its own; the address a new device opens is known once the server listens.
   const devices = await openDevicePairing({ appDataDir, logger });
   // Agent access to enrolled machines (#20): off unless `OMP_APP_DEVICE_ACCESS=1` and the app has its https address,
-  // which machines enroll with and sign into their answers.
+  // which machines enroll with and sign into their answers. What a chat waits for there (its access, a folder) reaches it
+  // as a notice through the queue of messages for chats, set up below.
+  let accessNotice: (threadId: string, text: string) => void = () => undefined;
   const deviceAccess =
     env.OMP_APP_DEVICE_ACCESS === "1" && remote !== undefined
       ? await openDeviceAccess({
@@ -839,6 +842,7 @@ export async function createCompositionServer(
           onMachinesChanged: (machines) =>
             deviceAccessPublishers(publish).machinesChanged(machines),
           onActivity: (activity) => deviceAccessPublishers(publish).activity(activity),
+          notify: (threadId, text) => accessNotice(threadId, text),
           logger,
         })
       : undefined;
@@ -911,6 +915,20 @@ export async function createCompositionServer(
   });
   a0Runtime.tasks.onTurnEnd((threadId) => taskQueue.onTurnEnd(threadId));
   void taskQueue.restore();
+  accessNotice = (threadId, text) => {
+    const parsed = ThreadId.safeParse(threadId);
+    if (!parsed.success) return;
+    taskQueue
+      .add({
+        text: withAppNotice("agent-access", text),
+        target: { kind: "chat", threadId: parsed.data },
+        label: "Agent access",
+        when: { kind: "free" },
+      })
+      .catch((error: unknown) =>
+        logger.warn("device_access.notice_failed", { error: String(error) }),
+      );
+  };
   // A chat with no session file yet still holds what a person put beside it: stopping its omp early would lose it.
   holdsBesidesFile = (threadId) =>
     draftStore.hasThreadDraft(threadId) ||

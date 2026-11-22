@@ -62,6 +62,8 @@ async function setUp(
   const hostPublic = await keygen(hostKey);
   const clientPublic = await keygen(join(dir, "client"));
   const events: WrapperEvent[] = [];
+  /** The person's answers to folder requests, as the guard tells its agent. */
+  const folderAnswers: Record<string, unknown>[] = [];
   const logged: string[] = [];
   const sudoCalls: string[] = [];
   /** logind's delay lock on sleep: "held" when taken, "released" when let go. */
@@ -165,6 +167,7 @@ async function setUp(
           const line = JSON.parse(buffer.slice(0, at)) as { type: string; event?: WrapperEvent };
           buffer = buffer.slice(at + 1);
           if (line.type === "wrapper" && line.event !== undefined) events.push(line.event);
+          if (line.type === "folder-answer") folderAnswers.push(line);
         }
       },
     },
@@ -205,6 +208,7 @@ async function setUp(
     mountCalls,
     clientPublic,
     events,
+    folderAnswers,
     logged,
     sudoCalls,
     sleepLock,
@@ -658,7 +662,7 @@ describe.skipIf(!ready)("the guard with a real sshd (#20)", () => {
     expect(await h.guard.on(process.pid, 30, h.clientPublic)).toBeNull();
   });
 
-  test("an agent asks for a folder from its session: it waits for the person, is mounted while on, and covered, secret, denied, ended and removed requests are answered (PLAN §7d)", async () => {
+  test("an agent asks for a folder from its session: it does not wait, the person's answer goes to its agent (for the chat's notice), the folder is mounted while on, and covered, secret, denied, ended and removed requests are answered (PLAN §7d)", async () => {
     const messages: string[] = [];
     const h = await setUp(
       async (_pid, action, message) => {
@@ -688,21 +692,38 @@ describe.skipIf(!ready)("the guard with a real sshd (#20)", () => {
       if (asked === undefined) throw new Error("no request reached the guard");
       return asked;
     };
+    /** The answer the guard told its agent for the request of `stream`. */
+    const answerFor = async (stream: number) => {
+      for (let tries = 0; tries < 100; tries += 1) {
+        const told = h.folderAnswers.find((each) => each.stream === stream);
+        if (told !== undefined) return told;
+        await Bun.sleep(50);
+      }
+      throw new Error(`no answer told for stream ${stream}`);
+    };
     const workspace = join(h.personHome, "projects");
     const mountedAt = join(h.shareRoot, "projects");
     expect(await h.guard.on(process.pid, 30, h.clientPublic)).toBeNull();
 
-    // Asked to change files, with a control character in the reason; the person allows reading only.
-    const first = ask(1, `'~/projects' --write --why 'Read the build'$'\\a'' logs'`);
+    // Asked to change files, with a control character in the reason: the agent hears "asked" at once and goes on; the
+    // request stays for the person after its session ended. They allow reading only.
+    const first = await ask(1, `'~/projects' --write --why 'Read the build'$'\\a'' logs'`);
+    expect(first.code).toBe(3);
+    expect(first.err).toContain("Their answer comes into this chat as a notice");
     const asked = await waiting();
     expect(asked).toMatchObject({ path: workspace, write: true, why: "Read the build  logs" });
     expect(await h.guard.allowFolder(process.pid, asked.id, false, "server.example")).toBeNull();
     expect(messages.at(-1)).toBe(
       `share-folder: Agents of the omp-app server server.example will be able to read the files in ${workspace} whenever agent access is on, until you remove it from Shared folders.`,
     );
-    const allowed = await first;
-    expect(allowed).toMatchObject({ code: 0, out: mountedAt });
-    expect(allowed.err).toContain("(read only)");
+    expect(await answerFor(1)).toEqual({
+      type: "folder-answer",
+      stream: 1,
+      path: workspace,
+      answer: "allowed",
+      at: mountedAt,
+      write: false,
+    });
     expect(h.mountCalls).toEqual([`mount ${workspace} ${mountedAt} ro`]);
     expect(h.guard.state().shared).toMatchObject([
       { path: workspace, place: "projects", write: false },
@@ -727,24 +748,22 @@ describe.skipIf(!ready)("the guard with a real sshd (#20)", () => {
     expect(await h.guard.on(process.pid, 30, h.clientPublic)).toBeNull();
     expect(h.mountCalls.at(-1)).toBe(`mount ${workspace} ${mountedAt} ro`);
 
-    // Denied; then a request still waiting at off is answered.
-    const denied = ask(4, `${workspace} --write`);
+    // Denied; then a request still waiting at off is answered with why.
+    expect((await ask(4, `${workspace} --write`)).code).toBe(3);
     expect(h.guard.denyFolder((await waiting()).id)).toBeNull();
-    expect(await denied).toMatchObject({ code: 1 });
-    expect((await denied).err).toContain("did not allow");
-    // A request still waiting at off: the session ends with it, and the request is gone.
-    const ended = ask(5, `${workspace} --write`);
+    expect(await answerFor(4)).toMatchObject({ answer: "denied", path: workspace });
+    expect((await ask(5, `${workspace} --write`)).code).toBe(3);
     await waiting();
     await h.guard.off();
-    expect((await ended).code).not.toBe(0);
+    expect(await answerFor(5)).toMatchObject({ answer: "no answer" });
     expect(h.guard.state().asks).toEqual([]);
 
     // To change files, allowed: mounted again, for writing; Remove unmounts it and forgets it.
     expect(await h.guard.on(process.pid, 30, h.clientPublic)).toBeNull();
-    const writes = ask(6, `${workspace} --write`);
+    expect((await ask(6, `${workspace} --write`)).code).toBe(3);
     expect(await h.guard.allowFolder(process.pid, (await waiting()).id, true)).toBeNull();
     expect(messages.at(-1)).toContain("will be able to read and change the files in");
-    expect((await writes).err).toContain("(read and change)");
+    expect(await answerFor(6)).toMatchObject({ answer: "allowed", write: true });
     expect(h.mountCalls.slice(-2)).toEqual([
       `unmount ${mountedAt}`,
       `mount ${workspace} ${mountedAt} rw`,

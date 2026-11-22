@@ -135,6 +135,18 @@ export class MachineLink {
     return true;
   }
 
+  /**
+   * Tells the server the person answered something a chat waits for (a chat's request denied, a folder request
+   * answered), so it can tell the chat; false when the link cannot carry it now.
+   */
+  sendAnswer(
+    frame: Extract<MachineAccessFrame, { type: "chat-denied" } | { type: "folder-answer" }>,
+  ): boolean {
+    if (!this.#authed || this.#closed || this.#ws.readyState !== WebSocket.OPEN) return false;
+    this.#send(frame);
+    return true;
+  }
+
   close(): void {
     this.#end(1000, "closed by the machine");
   }
@@ -252,7 +264,7 @@ export class MachineLink {
         type: "refused",
         stream: id,
         reason:
-          "this chat has no access to this computer yet: its owner was asked to allow it there; try again once they have",
+          "this chat has no access to this computer yet: its owner was asked; their answer comes into this chat as a notice",
       });
     }
     if (this.#streams.size >= ACCESS_LIMITS.streams || this.#streams.has(id)) {

@@ -125,6 +125,7 @@ const APP_NOTICE_SOURCES: Readonly<Record<string, string>> = {
 	questions: "Your answers from Questions",
 	"issue-watch": "From the issue watcher",
 	wake: "Scheduled wake-up",
+	"agent-access": "Agent access",
 };
 
 export function describeNotice(customType: string, details: unknown, text: string): NoticeView {

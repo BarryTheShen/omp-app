@@ -95,6 +95,17 @@ export interface Folders {
   readonly shared: z.infer<typeof GuardStateBody>["shared"];
 }
 
+/** The person's answer to an agent's folder request, as the guard tells it (the request's stream, for its chat). */
+const FolderAnswer = z.object({
+  type: z.literal("folder-answer"),
+  stream: z.number().int().min(1),
+  path: z.string().max(4_096),
+  answer: z.enum(["allowed", "denied", "no answer", "refused"]),
+  at: z.string().max(4_096).optional(),
+  write: z.boolean().optional(),
+  reason: z.string().optional(),
+});
+
 /** What the wrapper told the guard, as the guard passes it on. */
 const WrapperEvent = z.discriminatedUnion("type", [
   z.object({
@@ -445,9 +456,10 @@ export class Agent {
     return null;
   }
 
-  /** Turns a chat's request down (no password: it grants nothing). */
+  /** Turns a chat's request down (no password: it grants nothing); the chat hears it through the server. */
   denyChat(threadId: string): string | null {
     if (this.#chats === null || !this.#chats.deny(threadId)) return "that chat is no longer asking";
+    this.#link?.sendAnswer({ type: "chat-denied", threadId });
     this.#chatsChanged();
     return null;
   }
@@ -813,6 +825,23 @@ export class Agent {
           sudoUntil: state.data.sudoUntil,
         });
       } else if (reviewChanged) this.#setState(this.#state);
+      return;
+    }
+    if (message.type === "folder-answer") {
+      // The person answered a folder request: the chat whose session asked hears it through the server.
+      const answered = FolderAnswer.safeParse(message);
+      if (!answered.success) return;
+      const { stream, path, answer, at, write, reason } = answered.data;
+      this.#link?.sendAnswer({
+        type: "folder-answer",
+        stream,
+        path,
+        // Allowed but not mounted counts as not shared, with its reason.
+        answer: answer === "refused" ? "no answer" : answer,
+        ...(at === undefined ? {} : { at }),
+        ...(write === undefined ? {} : { write }),
+        ...(reason === undefined ? {} : { reason: reason.slice(0, 300) }),
+      });
       return;
     }
     if (message.type !== "wrapper") return;

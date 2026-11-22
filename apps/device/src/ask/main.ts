@@ -1,8 +1,8 @@
 /**
  * `omp-app-device ask-folder <folder> [--write] [--why <text>]` (#20, PLAN §7d): run by an agent in its session on this
- * computer, it asks the person for one of their folders. The guard checks the folder and shows the person the request;
- * once they allow it with their password, the folder is reachable at the path printed whenever access is on. It waits
- * for the answer (up to 10 minutes), and exits 0 only when the folder may be used.
+ * computer, it asks the person for one of their folders. The guard checks the folder and shows the person the request.
+ * A folder shared already is printed at once (exit 0); a refused one exits 1. Otherwise it does not wait: it exits 3
+ * ("asked"), and the person's answer, with where the folder is once allowed, comes into the agent's chat as a notice.
  */
 import { randomBytes } from "node:crypto";
 import { resolve } from "node:path";
@@ -11,7 +11,8 @@ const USAGE = `Usage: omp-app-device ask-folder <folder> [--write] [--why <text>
 
 Asks the person for one of their folders, to read (or with --write, also to change) while agent access is on.
 <folder> is a full path, or '~/...' in quotes for a folder in the person's home (not the agent account's).
-Prints where the folder can be reached once the person allows it.`;
+Prints where the folder can be reached when it is shared already (exit 0). Otherwise the person is asked (exit 3):
+their answer, with where the folder is once allowed, comes into this chat as a notice; do not wait or ask again.`;
 
 const args = process.argv.slice(2);
 let folder: string | null = null;
@@ -57,10 +58,8 @@ const path =
   folder === "~" || folder.startsWith("~/") || folder.startsWith("/") ? folder : resolve(folder);
 const reply = await new Promise<string>((done) => {
   let text = "";
-  const waiting = setTimeout(
-    () => console.error("Waiting for the person to answer on the computer (up to 10 minutes)…"),
-    1_000,
-  );
+  // The guard answers within moments: checking the folder only.
+  const waiting = setTimeout(() => console.error("Asking the guard…"), 2_000);
   Bun.connect({
     unix: records,
     socket: {
@@ -98,6 +97,12 @@ switch (answer.answer) {
       `Allowed: ${folder} is at ${answer.at} (${answer.write === true ? "read and change" : "read only"}), while agent access is on.`,
     );
     process.exit(0);
+    break;
+  case "asked":
+    console.error(
+      `Asked the person to share ${folder}${write ? " to read and change" : ""}. Their answer comes into this chat as a notice, with where the folder is once allowed; do not wait for it or ask again.`,
+    );
+    process.exit(3);
     break;
   case "denied":
     console.error(`The person did not allow ${folder}.`);
