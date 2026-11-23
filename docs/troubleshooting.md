@@ -70,6 +70,14 @@ The pairing page may add "The link this page was opened with no longer works." a
 
 **What to do.** Press **Reload**: the page reloads and shows the same chat again.
 
+## "The app did not reload"
+
+**What you see.** After **Reload** or **Reconnect now**, the page stays as it was for a while, then this message: "The app did not reload. Close it (on an iPhone, swipe it away) and open it again."
+
+**Why.** The browser began loading the page again and the load never finished. On an iPhone's Home Screen app this left the old page in place, no longer answering. The page waits 8 seconds, then starts the load afresh; 20 seconds after you pressed the button it says so instead of doing nothing. Each step is written to the server's debug log (`supported=reload`), with how long a reload that landed took.
+
+**What to do.** Close the app and open it again; your chats and what you typed are kept. If it happens again, save the debug log ([below](#how-do-i-save-the-debug-log)) and attach it to an issue.
+
 ## A part of the app says the server needs an update
 
 **What you see.** One of these, in the part named:

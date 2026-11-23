@@ -111,6 +111,8 @@ export function folderMention(path: string): string {
 export interface BoxState {
   readonly text: string;
   readonly caret: number;
+  /** A file's mention a menu row put in (`@src/app.ts`): the box keeps it whole from then on (`boxTokens.ts`). */
+  readonly mention?: string;
 }
 
 /**

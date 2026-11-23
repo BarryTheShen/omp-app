@@ -1,3 +1,5 @@
+import { reloadPage } from "./pageReload";
+
 /**
  * Which page loads come back to the chat the page showed, where a launch opens on a new chat on a phone (#2819):
  * - the app's own reload (its banner's Reload): a mark in the tab's session storage, which a reload keeps and a launch
@@ -18,7 +20,7 @@ export function reloadKeepingChat(): void {
   } catch {
     // No session storage (a private window's full storage): a plain reload.
   }
-  window.location.reload();
+  reloadPage("keep-chat");
 }
 
 function appReload(): boolean {

@@ -5,9 +5,11 @@ export interface QuestionsSnapshot {
   readonly records: readonly QuestionRecord[] | null;
   /** How many wait for an answer. */
   readonly open: number;
+  /** The Questions panel is asked to show the questions (answers taken back to change, `reveal`). */
+  readonly wanted: boolean;
 }
 
-const EMPTY: QuestionsSnapshot = { records: null, open: 0 };
+const EMPTY: QuestionsSnapshot = { records: null, open: 0, wanted: false };
 
 /** What the arrival notice says: the person may be looking at another chat or another app. */
 export const ASKED_NOTICE =
@@ -20,6 +22,7 @@ export const ASKED_NOTICE =
  */
 export class QuestionsStore {
   #snapshot: QuestionsSnapshot = EMPTY;
+  #wanted = false;
   readonly #listeners = new Set<() => void>();
   readonly #say: (text: string) => void;
 
@@ -64,9 +67,21 @@ export class QuestionsStore {
     this.#publish(null);
   }
 
+  /** Asks the Questions panel to show the questions (answers taken back to change); `revealed` once it does. */
+  reveal(): void {
+    this.#wanted = true;
+    this.#publish(this.#snapshot.records);
+  }
+
+  revealed(): void {
+    if (!this.#wanted) return;
+    this.#wanted = false;
+    this.#publish(this.#snapshot.records);
+  }
+
   #publish(records: readonly QuestionRecord[] | null): void {
     const open = records?.filter((record) => record.answer === null).length ?? 0;
-    this.#snapshot = { records, open };
+    this.#snapshot = { records, open, wanted: this.#wanted };
     for (const listener of [...this.#listeners]) listener();
   }
 }

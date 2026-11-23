@@ -10,7 +10,7 @@ import {
   resolveToolRenderer,
   type ToolRenderHost,
 } from "../vendor/collab-web/tool-render";
-import type { GroupItem } from "./rows";
+import { type GroupItem, leadTitle } from "./rows";
 
 type Call = Extract<GroupItem, { readonly kind: "call" }>;
 
@@ -84,7 +84,7 @@ export function ToolGroup({
   const status = now !== undefined ? "run" : failed > 0 ? "err" : "ok";
   // The model's last lead-in ("Checking the queue:") says what the group is doing: its title, as plain words.
   const lead = items.findLast((item) => item.kind === "lead");
-  const title = lead?.kind === "lead" ? lead.text.replace(/:$/, "").replaceAll("`", "") : null;
+  const title = lead?.kind === "lead" ? leadTitle(lead.text) : null;
 
   return (
     <div className={`tv-card tv-group${failed > 0 ? " tv-card--error" : ""}`}>

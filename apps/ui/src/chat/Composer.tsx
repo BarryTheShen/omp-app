@@ -46,6 +46,7 @@ import { useSidewaysRow } from "../sidewaysRow";
 import { TodoPill } from "../todos/TodoPill";
 import { type AttachedFile, MAX_FILE_BYTES, pastesCopiedFiles } from "./attachedFiles";
 import { type Attachment, readImages } from "./attachments";
+import { type BoxToken, keepWhole, snapSelection, tokensIn } from "./boxTokens";
 import type { ComposerRestore } from "./ChatPane";
 import { ComposerMenu } from "./ComposerMenu";
 import { caretOnEdgeRow } from "./caretRow";
@@ -95,6 +96,30 @@ function insertText(box: HTMLTextAreaElement, text: string): boolean {
 
 /** A typed `/pause` (omp's takes no arguments and ignores any). */
 const PAUSE_TEXT = /^\/pause(?:\s|$)/;
+
+/**
+ * The box's text with each reference (`boxTokens.ts`) marked: drawn behind the box's own text, letters clear, so each
+ * reference shows as a chip where it stands. A last empty line still takes its line, as in the box.
+ */
+function marked(text: string, marks: readonly BoxToken[]): ReactNode[] {
+  const out: ReactNode[] = [];
+  let at = 0;
+  for (const mark of marks) {
+    if (mark.start > at) out.push(text.slice(at, mark.start));
+    out.push(
+      <mark
+        key={mark.start}
+        className="rounded-[4px] bg-[color-mix(in_oklch,var(--accent)_22%,transparent)] text-transparent shadow-[0_0_0_2px_color-mix(in_oklch,var(--accent)_22%,transparent)] [box-decoration-break:clone]"
+      >
+        {text.slice(mark.start, mark.end)}
+      </mark>,
+    );
+    at = mark.end;
+  }
+  out.push(text.slice(at));
+  if (text.endsWith("\n")) out.push(" ");
+  return out;
+}
 
 /** What the palette, and the lite view's suggestions, can do with a pane's message box. */
 export interface ComposerHandle {
@@ -201,6 +226,14 @@ export const Composer = memo(function Composer({
   const textRef = useRef(text);
   /** What each mention's label in the box stands for (`mentionLabels.ts`): the link the message goes out with. */
   const mentionLinks = useRef(new Map<string, string>());
+  /** The files' mentions the `@` menu put in (`@src/app.ts`): references, kept whole like the labels (`boxTokens.ts`). */
+  const fileMentions = useRef(new Set<string>());
+  /** The mentions the box holds as references: the extensions' labels and the files' mentions. */
+  const knownMentions = (): string[] => [...mentionLinks.current.keys(), ...fileMentions.current];
+  /** Where the caret was before it last moved: an arrow that lands inside a reference goes on past it. */
+  const lastCaret = useRef<number | null>(null);
+  /** The references drawn behind the text as chips; it scrolls with the box. */
+  const marksRef = useRef<HTMLDivElement | null>(null);
   const [caret, setCaret] = useState(0);
   const boxRef = useRef<HTMLTextAreaElement | null>(null);
   /**
@@ -420,6 +453,8 @@ export const Composer = memo(function Composer({
     textRef.current = next;
     setText(next);
     draft.change(next);
+    // A sent or emptied box holds no mention: a later one with the same words is typed text.
+    if (next === "") fileMentions.current.clear();
   };
 
   // The kept text comes back when the chat opens, unless something was typed first. From then on, a text another window
@@ -655,6 +690,14 @@ export const Composer = memo(function Composer({
       .catch((failure: unknown) => setError(`Could not take it back: ${errorText(failure)}`));
   };
 
+  /** Your answers from the Questions panel, taken back while omp has not read them, wait in the panel to be changed. */
+  const reopenAnswers = (message: string): void => {
+    controller
+      .reopenAnswers(message)
+      .then(() => showPanel("btw"))
+      .catch((failure: unknown) => setError(`Could not take them back: ${errorText(failure)}`));
+  };
+
   // A message whose turn never started because Stop came first comes back to the box, as Stop's queue does.
   const sendDroppedRef = useRef<(sent: SentMessage) => void>(() => undefined);
   sendDroppedRef.current = (sent) => restoreMessages([sent]);
@@ -677,15 +720,22 @@ export const Composer = memo(function Composer({
   const take = (index: number): void => {
     const next = menu.pick(index);
     if (next === null) return;
+    const taken = (row: {
+      readonly text: string;
+      readonly caret: number;
+      readonly mention?: string;
+    }) => {
+      if (row.mention !== undefined) fileMentions.current.add(row.mention);
+      put(shortenMentions(row.text, row.caret, mentionLinks.current));
+    };
     if (next instanceof Promise) {
       const typed = textRef.current;
       void next.then((later) => {
-        if (later !== null && textRef.current === typed)
-          put(shortenMentions(later.text, later.caret, mentionLinks.current));
+        if (later !== null && textRef.current === typed) taken(later);
       });
       return;
     }
-    put(shortenMentions(next.text, next.caret, mentionLinks.current));
+    taken(next);
   };
 
   /**
@@ -1029,6 +1079,12 @@ export const Composer = memo(function Composer({
       .finally(() => setSending(false));
   };
 
+  /** The text's face, size, padding and line height: the box's, and the same for the chips behind it. */
+  const boxText = phone
+    ? "px-2 py-[11px] text-[length:var(--host-text-size,1rem)] leading-snug"
+    : "px-3.5 pt-3 pb-1 text-[length:var(--host-text-size,0.875rem)] leading-normal";
+  const marks = tokensIn(text, knownMentions());
+
   return (
     <div className="composer-foot px-4 pt-2 pb-4 max-sm:px-2">
       <div className="relative mx-auto max-w-[720px]">
@@ -1048,7 +1104,7 @@ export const Composer = memo(function Composer({
           !phone && <WorkingRowSpace />
         )}
         {roleTrack !== null && <RoleTrack track={roleTrack} onDone={onRoleTrackDone} />}
-        <QueuedMessages queue={queue} onTakeBack={takeBack} />
+        <QueuedMessages queue={queue} onTakeBack={takeBack} onReopenAnswers={reopenAnswers} />
         {hasPills && !phone && (
           <div className="flex min-w-0 items-center gap-1.5 px-1 pb-2">{pills}</div>
         )}
@@ -1198,51 +1254,101 @@ export const Composer = memo(function Composer({
                   : {})}
               />
             )}
-            <textarea
-              ref={boxRef}
-              // Six lines at most on a phone, twelve on a computer, each plus its padding: a full box shows whole lines.
-              // A computer's also leaves its buttons in a short window (35% of it at most). A phone's empty box keeps
-              // its placeholder (the model's name) on one line: WebKit ignores `white-space` on `::placeholder`, so a
-              // long name wrapped and was cut by the box; it takes the box's own `placeholder-shown` instead.
-              className={`block w-full resize-none bg-transparent text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${phone ? `max-h-[calc(6lh_+_22px)] min-h-[1lh] min-w-0 px-2 py-[11px] text-[length:var(--host-text-size,1rem)] leading-snug placeholder:truncate placeholder-shown:truncate${tall ? " order-first basis-full" : ""}` : "max-h-[min(calc(12lh_+_1rem),35dvh)] min-h-[2lh] px-3.5 pt-3 pb-1 text-[length:var(--host-text-size,0.875rem)] leading-normal"}`}
-              aria-label="Message"
-              placeholder={
-                closed
-                  ? "This chat could not be opened"
-                  : disabled
-                    ? "Opening the chat…"
-                    : readyPlaceholder
-              }
-              value={text}
-              rows={phone ? 1 : 2}
-              // The keyboard takes the quick panel's place.
-              onFocus={() => setPanel(false)}
-              onChange={(event) => {
-                setError(null);
-                // Typing makes what is in the box the text, wherever Up and Down had got to.
-                browsing.current = null;
-                update(event.target.value);
-                setCaret(event.target.selectionStart);
-              }}
-              onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-              onKeyDown={onKeyDown}
-              onPaste={(event) => {
-                const data = event.clipboardData;
-                const files = [...data.files];
-                const text = data.getData("text/plain");
-                // A file manager's copy: its files' addresses, and their paths as text (#2833). Text copied from a page
-                // or a program goes in as text, as before, also when a picture of it comes along (a spreadsheet's).
-                const copied = pastesCopiedFiles(data.getData("text/uri-list"), text);
-                if (files.length > 0 && (text === "" || copied)) {
-                  event.preventDefault();
-                  addFiles(files);
-                  return;
+            {/* The references (`boxTokens.ts`) as chips behind the text: the same text, font, padding and wrapping, its
+                letters clear, each reference marked; it scrolls with the box. */}
+            <div
+              className={`relative w-full ${phone ? `min-w-0${tall ? " order-first basis-full" : ""}` : ""}`}
+            >
+              {marks.length > 0 && (
+                <div
+                  ref={marksRef}
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute inset-0 overflow-y-auto whitespace-pre-wrap break-words text-transparent ${boxText}`}
+                >
+                  {marked(text, marks)}
+                </div>
+              )}
+              <textarea
+                ref={boxRef}
+                // Six lines at most on a phone, twelve on a computer, each plus its padding: a full box shows whole
+                // lines. A computer's also leaves its buttons in a short window (35% of it at most). A phone's empty
+                // box keeps its placeholder (the model's name) on one line: WebKit ignores `white-space` on
+                // `::placeholder`, so a long name wrapped and was cut by the box; it takes `placeholder-shown` instead.
+                className={`relative block w-full resize-none bg-transparent text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${boxText} ${phone ? "max-h-[calc(6lh_+_22px)] min-h-[1lh] min-w-0 placeholder:truncate placeholder-shown:truncate" : "max-h-[min(calc(12lh_+_1rem),35dvh)] min-h-[2lh]"}`}
+                aria-label="Message"
+                placeholder={
+                  closed
+                    ? "This chat could not be opened"
+                    : disabled
+                      ? "Opening the chat…"
+                      : readyPlaceholder
                 }
-                if (desktopBridge() === null || (text !== "" && !copied)) return;
-                event.preventDefault();
-                pasteFromWindow(event.currentTarget, text);
-              }}
-            />
+                value={text}
+                rows={phone ? 1 : 2}
+                // The keyboard takes the quick panel's place.
+                onFocus={() => setPanel(false)}
+                onChange={(event) => {
+                  setError(null);
+                  // Typing makes what is in the box the text, wherever Up and Down had got to.
+                  browsing.current = null;
+                  const area = event.target;
+                  // An edit that touched part of a reference takes it whole (an input method's word in the making is left
+                  // to finish first). A picture stays as omp keeps it: one whose name is gone is left out of the message
+                  // when the text names others.
+                  const kept = (event.nativeEvent as InputEvent).isComposing
+                    ? null
+                    : keepWhole(
+                        textRef.current,
+                        area.value,
+                        area.selectionStart,
+                        tokensIn(textRef.current, knownMentions()),
+                      );
+                  if (kept !== null) {
+                    put(kept);
+                    return;
+                  }
+                  update(area.value);
+                  setCaret(area.selectionStart);
+                }}
+                onSelect={(event) => {
+                  // The caret never rests inside a reference, and a selection takes one whole or not at all.
+                  const area = event.currentTarget;
+                  const { selectionStart: start, selectionEnd: end } = area;
+                  const snapped = snapSelection(
+                    start,
+                    end,
+                    tokensIn(area.value, knownMentions()),
+                    lastCaret.current,
+                  );
+                  if (snapped.start !== start || snapped.end !== end)
+                    area.setSelectionRange(snapped.start, snapped.end, area.selectionDirection);
+                  lastCaret.current =
+                    area.selectionDirection === "backward" ? snapped.start : snapped.end;
+                  setCaret(snapped.start);
+                }}
+                onScroll={(event) => {
+                  if (marksRef.current !== null)
+                    marksRef.current.scrollTop = event.currentTarget.scrollTop;
+                }}
+                onKeyDown={onKeyDown}
+                onPaste={(event) => {
+                  const data = event.clipboardData;
+                  const files = [...data.files];
+                  const text = data.getData("text/plain");
+                  // A file manager's copy: its files' addresses, and their paths as text (#2833). Text copied from a page
+                  // or a program goes in as text, as before, also when a picture of it comes along (a spreadsheet's).
+                  const copied = pastesCopiedFiles(data.getData("text/uri-list"), text);
+                  if (files.length > 0 && (text === "" || copied)) {
+                    event.preventDefault();
+                    addFiles(files);
+                    return;
+                  }
+                  if (desktopBridge() === null || (text !== "" && !copied)) return;
+                  event.preventDefault();
+                  pasteFromWindow(event.currentTarget, text);
+                }}
+              />
+            </div>
             {phone && tall && <span aria-hidden className="flex-1" />}
             {phone && (
               <QuickPromptsKey

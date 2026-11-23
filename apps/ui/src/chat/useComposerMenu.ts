@@ -266,13 +266,11 @@ export function useComposerMenu(
   /** The box with a row put in, on the text as it is now. */
   const take = (item: MenuItem): BoxState | null => {
     if (item.kind === "extension") return item.result ?? null;
-    const replacement =
-      item.kind === "command"
-        ? `${item.label} `
-        : item.kind === "directory"
-          ? folderMention(item.label)
-          : mentionText(item.key);
-    return replaceTrigger(text, trigger, replacement);
+    if (item.kind === "command") return replaceTrigger(text, trigger, `${item.label} `);
+    // A folder's mention keeps the menu going into the folder; a file's is finished, a reference from then on.
+    if (item.kind === "directory") return replaceTrigger(text, trigger, folderMention(item.label));
+    const mention = mentionText(item.key);
+    return { ...replaceTrigger(text, trigger, mention), mention: mention.trimEnd() };
   };
   /**
    * Words with spaces whose answer is still coming: both are asked at once, and the row is taken only if the answer

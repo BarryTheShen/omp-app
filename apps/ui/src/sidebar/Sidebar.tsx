@@ -10,6 +10,7 @@ import type {
 } from "@omp-app/contracts";
 import { cn } from "cn";
 import {
+  ChevronRight,
   CircleStop,
   Clock,
   Ellipsis,
@@ -20,11 +21,11 @@ import {
   PencilLine,
   Pin,
   PinOff,
+  Plus,
   Search,
   Settings,
   Sparkles,
   SquarePen,
-  SquarePlus,
   Trash2,
 } from "lucide-react";
 import {
@@ -69,9 +70,12 @@ import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { WhatsNew } from "../tour/WhatsNew";
 import { startChatDrag } from "../workspace/chatDrag";
 import type { OpenHow, WorkspaceHandle, WorkspaceView } from "../workspace/Workspace";
+import type { WorkspacesStore } from "../workspace/workspaces";
+import { useFolded } from "./folding";
 import { snippet, useMeaningSearch } from "./meaning";
 import { titleOf } from "./title";
 import type { ChatList } from "./useChatList";
+import { WorkspaceList } from "./WorkspaceList";
 
 /** How long the pointer rests on a chat before it is read ahead. */
 const PREFETCH_REST_MS = 120;
@@ -130,6 +134,7 @@ export function Sidebar({
   connection,
   edge,
   onHide,
+  workspaces,
 }: {
   /** The server, for the search by meaning. */
   readonly client: AppClient;
@@ -170,6 +175,8 @@ export function Sidebar({
   readonly edge?: ReactNode;
   /** On a desktop, hides the list (#2805); Ctrl+B does too. */
   readonly onHide?: () => void;
+  /** On a desktop, the workspaces to list at the top while the list shows (as Zen's sidebar lists spaces). */
+  readonly workspaces?: WorkspacesStore;
 }): ReactNode {
   const [query, setQuery] = useState("");
   /** A newer omp-app is out: a dot on the Settings button, whose App tab updates it. */
@@ -199,6 +206,10 @@ export function Sidebar({
   /** On a phone: the row swiped open, showing Pin and Delete; one at a time. */
   const [swiped, setSwiped] = useState<ThreadId | null>(null);
   const needle = query.trim().toLowerCase();
+  /** Workspaces, Needs you, Pinned and Chats fold; while a search is typed, what it finds shows in each. */
+  const [folded, fold] = useFolded();
+  const shut = (label: string): boolean => needle === "" && folded.has(label);
+  const section = (label: string) => ({ folded: shut(label), onFold: () => fold(label) });
   const shown = list.sessions.filter(
     (session) => needle === "" || titleOf(session).toLowerCase().includes(needle),
   );
@@ -390,20 +401,9 @@ export function Sidebar({
         </div>
       )}
       {/*
-        On a desktop, a new workspace: a tab of its own, one blank window with its New chat (#2791). On a phone, one chat
-        at a time: New chat is at the foot of the list, in the thumb's reach.
+        On a phone, one chat at a time: New chat is at the foot of the list, in the thumb's reach. On a desktop the
+        workspaces head the list, with ＋ for a new one.
       */}
-      {!phone && (
-        <Button
-          data-tour="new-workspace"
-          variant="ghost"
-          className="justify-start gap-2 px-2 text-t2 hover:text-t1 tablet:h-11"
-          onClick={() => workspace.current?.command("newTab")}
-        >
-          <SquarePlus />
-          New workspace
-        </Button>
-      )}
       <label
         data-tour="search-chats"
         className="mt-1 flex h-8 items-center gap-2 rounded-md px-2 text-t3 focus-within:bg-l1 max-sm:h-11 tablet:h-11"
@@ -419,13 +419,45 @@ export function Sidebar({
         />
       </label>
       <div data-tour="chat-list" className="min-h-0 flex-1 overflow-y-auto short:min-h-36">
+        {!phone && workspaces !== undefined && (
+          <Section
+            label="Workspaces"
+            folded={folded.has("Workspaces")}
+            onFold={() => fold("Workspaces")}
+            bare
+            action={
+              <button
+                type="button"
+                data-tour="new-workspace"
+                aria-label="New workspace"
+                title="New workspace"
+                className="grid size-6 shrink-0 place-items-center rounded-sm text-t3 hover:bg-l1 hover:text-t1 tablet:size-11"
+                onClick={() => workspace.current?.command("newTab")}
+              >
+                <Plus className="size-3.5" />
+              </button>
+            }
+          >
+            <WorkspaceList store={workspaces} />
+          </Section>
+        )}
         {elsewhere.length > 0 && (
           <Section label="Running in other folders">{elsewhere.map(runningRow)}</Section>
         )}
-        {waiting.length > 0 && <Section label="Needs you">{waiting.map(row)}</Section>}
-        {pinned.length > 0 && <Section label="Pinned">{pinned.map(row)}</Section>}
+        {waiting.length > 0 && (
+          <Section label="Needs you" {...section("Needs you")}>
+            {waiting.map(row)}
+          </Section>
+        )}
+        {pinned.length > 0 && (
+          <Section label="Pinned" {...section("Pinned")}>
+            {pinned.map(row)}
+          </Section>
+        )}
         {/* One array, keyed by chat: a chat whose file comes keeps its row's element as it moves to its saved row. */}
-        <Section label="Chats">{[...starting.map(startingRow), ...rest.map(row)]}</Section>
+        <Section label="Chats" {...section("Chats")}>
+          {[...starting.map(startingRow), ...rest.map(row)]}
+        </Section>
         {needle !== "" && shown.length === 0 && starting.length === 0 && elsewhere.length === 0 && (
           <p className="px-2 py-1 text-xs text-t3">No chat's title has "{query.trim()}".</p>
         )}
@@ -686,17 +718,49 @@ function ByMeaning({
   );
 }
 
+/**
+ * A section of the list under its name. With `onFold` the name is a button that folds it away and back (the chevron
+ * points down while it is open); `action` sits at the head's end; `bare` children bring their own list.
+ */
 function Section({
   label,
   children,
+  folded = false,
+  onFold,
+  action,
+  bare = false,
 }: {
   readonly label: string;
   readonly children: ReactNode;
+  readonly folded?: boolean;
+  readonly onFold?: () => void;
+  readonly action?: ReactNode;
+  readonly bare?: boolean;
 }): ReactNode {
   return (
     <section aria-label={label}>
-      <h2 className="px-2 pt-4 pb-1 text-xs font-medium text-t3">{label}</h2>
-      <ul>{children}</ul>
+      <div className="flex items-center gap-1 pt-3">
+        <h2 className="min-w-0 flex-1 text-xs font-medium text-t3">
+          {onFold === undefined ? (
+            <span className="block px-2 pt-1 pb-1">{label}</span>
+          ) : (
+            <button
+              type="button"
+              aria-expanded={!folded}
+              className="flex w-full items-center gap-1 rounded-sm px-2 pt-1 pb-1 text-left outline-none hover:text-t2 focus-visible:ring-2 focus-visible:ring-ring max-sm:h-11 tablet:h-11"
+              onClick={onFold}
+            >
+              {label}
+              <ChevronRight
+                className={cn("size-3 shrink-0 transition-transform", !folded && "rotate-90")}
+                aria-hidden="true"
+              />
+            </button>
+          )}
+        </h2>
+        {action}
+      </div>
+      {!folded && (bare ? children : <ul>{children}</ul>)}
     </section>
   );
 }

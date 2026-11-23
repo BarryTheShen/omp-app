@@ -464,20 +464,28 @@ describe("ChatStore", () => {
 
   test("the queue shows only messages that can still be taken back: steers already sent into the reply drop out", () => {
     const store = new ChatStore();
+    const pixel = { type: "image" as const, data: "AAAA", mimeType: "image/png" };
     store.apply(
       event({
         type: "queue_update",
-        steering: ["already sent", "check the tests too"],
+        steering: ["already sent", "check [Image #1, 1x1] too"],
         followUp: ["then write the docs"],
         liveSteered: 1,
-      }),
+        // The chat host's pictures of each queued message, in omp's order: they stay with their message.
+        images: { steering: [[], [pixel]], followUp: [[]] },
+      } as never),
     );
     expect(store.getSnapshot().queue).toEqual({
-      steering: ["check the tests too"],
+      steering: ["check [Image #1, 1x1] too"],
       followUp: ["then write the docs"],
+      images: { steering: [[pixel]], followUp: [[]] },
     });
     store.apply(event({ type: "queue_update", steering: [], followUp: [], liveSteered: 0 }));
-    expect(store.getSnapshot().queue).toEqual({ steering: [], followUp: [] });
+    expect(store.getSnapshot().queue).toEqual({
+      steering: [],
+      followUp: [],
+      images: { steering: [], followUp: [] },
+    });
   });
 
   test("the thinking level shows the level chosen, not the one `auto` resolved to", () => {

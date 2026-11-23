@@ -34,7 +34,7 @@ import type { ActiveTool } from "../vendor/collab-web/lib/types";
 import type { ToolRenderHost } from "../vendor/collab-web/tool-render/types";
 import { FailureRow } from "./FailureRow";
 import { useGroupTools } from "./groupTools";
-import { MessageActions, userText } from "./MessageActions";
+import { answersNotice, MessageActions, userText } from "./MessageActions";
 import { buildRows, groupToolRuns, type TranscriptRow, toolResults } from "./rows";
 import { NoticeRow, ShellBlock } from "./ShellBlock";
 import type { ChatSnapshot } from "./store";
@@ -1085,6 +1085,8 @@ export interface RowActions {
   readonly onReopen?: () => void;
   readonly onNewChat?: () => void;
   readonly onEdit: (entryId: string) => void;
+  /** Your answers from Questions: the chat goes back to just before them and they wait in the panel again. */
+  readonly onEditAnswers: (entryId: string, message: string) => void;
   readonly canEdit: boolean;
 }
 
@@ -1108,10 +1110,22 @@ function RowView({
       const editable = actions.canEdit && !row.entry.id.startsWith("live-");
       const { id } = row.entry;
       const message = <EntryRow entry={row.entry} results={results} active={active} host={host} />;
-      return text === null ? (
+      if (text !== null) {
+        return (
+          <MessageActions text={text} onEdit={editable ? () => actions.onEdit(id) : null}>
+            {message}
+          </MessageActions>
+        );
+      }
+      const answers = answersNotice(row.entry);
+      return answers === null ? (
         message
       ) : (
-        <MessageActions text={text} onEdit={editable ? () => actions.onEdit(id) : null}>
+        <MessageActions
+          text={answers.text}
+          editLabel="Edit your answers"
+          onEdit={editable ? () => actions.onEditAnswers(id, answers.message) : null}
+        >
           {message}
         </MessageActions>
       );

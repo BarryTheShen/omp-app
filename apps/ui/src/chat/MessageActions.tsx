@@ -31,17 +31,37 @@ export function userText(entry: SessionEntry): string | null {
 }
 
 /**
+ * Your answers from the Questions panel as the chat holds them (a `questions` notice): the whole message, which the host
+ * matches to take them back, and their words, for Copy. Null for any other entry.
+ */
+export function answersNotice(
+  entry: SessionEntry,
+): { readonly message: string; readonly text: string } | null {
+  if (entry.type !== "message" || entry.message.role !== "user") return null;
+  const { content } = entry.message;
+  const message =
+    typeof content === "string"
+      ? content
+      : content.flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n");
+  const notice = splitAppNotice(message.trim());
+  return notice?.source === "questions" ? { message: message.trim(), text: notice.text } : null;
+}
+
+/**
  * One of your messages with Copy and Edit. On a computer they are under it, shown while the pointer is on it; on a phone
  * a touch-and-hold on the message opens them (a sheet, #2770), as a chat's row in the list does. Edit is offered once
- * omp has saved the message and while omp is idle; null hides it.
+ * omp has saved the message and while omp is idle; null hides it. `editLabel` names Edit (your answers' Edit takes them
+ * back to the Questions panel).
  */
 export function MessageActions({
   text,
   onEdit,
+  editLabel = "Edit this message",
   children,
 }: {
   readonly text: string;
   readonly onEdit: (() => void) | null;
+  readonly editLabel?: string;
   /** The message itself. */
   readonly children: ReactNode;
 }): ReactNode {
@@ -104,7 +124,7 @@ export function MessageActions({
               variant="ghost"
               size="icon-xs"
               className="text-t3 hover:text-t1 tablet:size-11"
-              aria-label="Edit this message"
+              aria-label={editLabel}
               onClick={onEdit}
             >
               <Pencil />

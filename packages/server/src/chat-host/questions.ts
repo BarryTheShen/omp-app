@@ -27,6 +27,8 @@ import { appToolDefinition } from "./tool-definition";
 const QUESTION_ENTRY = "omp-app/question";
 const ANSWER_ENTRY = "omp-app/question-answer";
 const SENT_ENTRY = "omp-app/question-sent";
+/** Sent answers taken back before omp read them (`reopen`): they wait again. */
+const REOPENED_ENTRY = "omp-app/question-reopened";
 
 /** Labels omp's own `ask` keeps for its rows; the page offers its own Other…, so the agent may not use them either. */
 const RESERVED_LABELS = new Set(["Other (type your own)", "Chat about this", "Next →"]);
@@ -176,7 +178,7 @@ export function answersMessage(records: readonly QuestionRecord[]): string {
 
 /** The answer as sent: no longer held, with the time it went. */
 function sentAnswer(answer: QuestionAnswer, sentAt: number): QuestionAnswer {
-  const { held: _held, ...rest } = answer;
+  const { held: _held, reopened: _reopened, ...rest } = answer;
   return { ...rest, sentAt };
 }
 
@@ -248,6 +250,15 @@ export class QuestionsController {
             records.set(id, { ...record, answer: sentAnswer(record.answer, sentAt) });
           }
         }
+      } else if (entry.customType === REOPENED_ENTRY) {
+        const { ids } = entry.data as { readonly ids: readonly string[] };
+        for (const id of ids) {
+          const record = records.get(id);
+          if (record?.answer != null && record.answer.held !== true) {
+            const { sentAt: _sentAt, ...answer } = record.answer;
+            records.set(id, { ...record, answer: { ...answer, held: true, reopened: true } });
+          }
+        }
       }
     }
     return [...records.values()];
@@ -302,6 +313,41 @@ export class QuestionsController {
     });
   }
 
+  /**
+   * Takes sent answers back while omp has not read them: `message` is the notice that carries them, the last answers
+   * sent with exactly that text; `take` takes it out of omp's queue (false once omp read it). They wait again,
+   * changeable, marked as taken back until changed. `rewound`: the chat was rewound to just before the message (Edit in
+   * the transcript), so nothing is taken from the queue; answers the rewound chat already shows as waiting stay so. The
+   * records taken back.
+   */
+  reopen(message: string, take: () => boolean, rewound = false): Promise<QuestionRecord[]> {
+    return this.#inTurn(async () => {
+      const known = this.list();
+      const sends = this.#session.sessionManager
+        .getEntries()
+        .flatMap((entry) =>
+          entry.type === "custom" && entry.customType === SENT_ENTRY
+            ? [(entry.data as { readonly ids: readonly string[] }).ids]
+            : [],
+        );
+      const ids = sends.reverse().find((sent) => {
+        const records = known.filter((record) => sent.includes(record.id));
+        return (
+          records.length > 0 && withAppNotice("questions", answersMessage(records)) === message
+        );
+      });
+      if (ids === undefined) {
+        if (rewound) return known.filter((record) => record.answer?.held === true);
+        throw new HostMethodError("invalid_params", "These answers are not this chat's");
+      }
+      if (!take()) throw new Error("omp has read these answers already");
+      this.#session.sessionManager.appendCustomEntry(REOPENED_ENTRY, { ids });
+      const reopened = this.list().filter((record) => ids.includes(record.id));
+      for (const record of reopened) this.#emit({ type: "question_record", record });
+      return reopened;
+    });
+  }
+
   #hold(
     id: string,
     sequence: number,
@@ -322,9 +368,11 @@ export class QuestionsController {
       this.#session.sessionManager.appendCustomEntry(ANSWER_ENTRY, { id, ...answer });
       const held: QuestionRecord = { ...record, answer };
       this.#emit({ type: "question_record", record: held });
-      // The answers go once no question of the chat is open, whichever ask each came from.
+      // The answers go once no question of the chat is open, whichever ask each came from, and no answer taken back
+      // waits unchanged (those go when sent).
       const known = this.list();
-      if (known.some((other) => other.answer === null)) return held;
+      if (known.some((other) => other.answer === null || other.answer.reopened === true))
+        return held;
       const sent = await this.#deliver(
         known.filter((other) => other.answer?.held === true),
         sequence,

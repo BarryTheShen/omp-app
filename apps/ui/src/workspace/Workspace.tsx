@@ -91,6 +91,7 @@ import {
   type WorkspaceTab,
   type WorkspaceTabs,
 } from "./tabs";
+import type { WorkspacesActions, WorkspacesStore } from "./workspaces";
 
 const THEME: DockviewTheme = { name: "omp", className: "dockview-theme-omp" };
 /** A chat's pane, the side panel, a file opened from the Files panel (#2782), and the dashboard. */
@@ -225,6 +226,8 @@ export function Workspace({
   onView,
   onShown,
   stripLeading,
+  strip = true,
+  workspaces,
   linkedChat = null,
   ref,
 }: {
@@ -236,6 +239,10 @@ export function Workspace({
   readonly onShown?: () => void;
   /** Before the workspace tabs: Show the chat list while it is hidden (#2805). */
   readonly stripLeading?: ReactNode;
+  /** Whether the workspaces' strip shows on top: false while the chat list shows them (`workspaces`). */
+  readonly strip?: boolean;
+  /** Where the chat list reads the workspaces from. */
+  readonly workspaces?: WorkspacesStore;
   /**
    * A chat the address named (`#chat=<id>`: the lite view's "Open in the full app", #2843): it opens in front once the
    * shown workspace is ready, as a click in the list opens it.
@@ -1200,25 +1207,39 @@ export function Workspace({
       return label === undefined ? [] : [[tab.id, label] as const];
     }),
   );
+  /** What the workspaces' tabs, on top or in the chat list, do. */
+  const tabActions: WorkspacesActions = {
+    activate: (id) => switchTabs((state) => activateTab(state, id)),
+    close: closeTabAsked,
+    rename: (id, title) => setTabs((state) => renameTab(state, id, title)),
+    renaming: setRenaming,
+    move: (id, to) => setTabs((state) => moveTabTo(state, id, to)),
+    add: commands.newTab,
+  };
+  // The chat list shows the workspaces while it is open (Zen's way); it reads them here.
+  useEffect(() => {
+    workspaces?.set({ tabs: tabs.tabs, active: tabs.active, labels, renaming }, tabActions);
+  });
 
   return (
     <PaneHostContext value={host}>
       <PaneModeContext value={paneMode}>
         <ShownTabContext value={apis.current.get(tabs.active) ?? null}>
           <div className="flex min-h-0 flex-1 flex-col">
-            {/* The workspaces, always on top on a desktop (#2791); a phone shows one chat at a time. */}
-            {!phone && (
+            {/* The workspaces on top while the chat list is hidden (#2791); in the list while it shows. A phone shows
+                one chat at a time. */}
+            {!phone && strip && (
               <TabStrip
                 tabs={tabs.tabs}
                 active={tabs.active}
                 labels={labels}
                 renaming={renaming}
-                onActivate={(id) => switchTabs((state) => activateTab(state, id))}
-                onClose={closeTabAsked}
-                onRename={(id, title) => setTabs((state) => renameTab(state, id, title))}
-                onRenaming={setRenaming}
-                onAdd={commands.newTab}
-                onMove={(id, to) => setTabs((state) => moveTabTo(state, id, to))}
+                onActivate={tabActions.activate}
+                onClose={tabActions.close}
+                onRename={tabActions.rename}
+                onRenaming={tabActions.renaming}
+                onAdd={tabActions.add}
+                onMove={tabActions.move}
                 leading={stripLeading}
               />
             )}

@@ -40,6 +40,7 @@ import {
   AnswerQuestionParams,
   type QuestionRecord,
   type QuestionRecordEvent,
+  ReopenAnswersParams,
   SkipQuestionParams,
 } from "./questions";
 import {
@@ -229,6 +230,16 @@ export const ChatHostImage = z.object({
 });
 export type ChatHostImage = z.infer<typeof ChatHostImage>;
 
+/**
+ * The pictures of the messages waiting in omp's queue, in the order of its texts (`getQueuedMessages`): one list per
+ * queued message, empty for one without. omp's queue reports texts only; the chat host adds these to the state and to
+ * `queue_update`, only while some queued message has a picture.
+ */
+export interface QueuedImages {
+  readonly steering: readonly (readonly ChatHostImage[])[];
+  readonly followUp: readonly (readonly ChatHostImage[])[];
+}
+
 export const PromptParams = z.object({
   text: z.string(),
   images: z.array(ChatHostImage).optional(),
@@ -290,7 +301,10 @@ export interface ChatHostState {
   readonly hasPendingAsyncWork: boolean;
   /** Idle, nothing queued or admitted, nothing pending (omp's settle predicate). */
   readonly isSettled: boolean;
-  readonly queuedMessages: ReturnType<Session["getQueuedMessages"]>;
+  /** omp's queue (its texts), and the pictures each queued message carries where any does (`QueuedImages`). */
+  readonly queuedMessages: ReturnType<Session["getQueuedMessages"]> & {
+    readonly images?: QueuedImages;
+  };
   readonly todoPhases: ReturnType<Session["getTodoPhases"]>;
   readonly fastModeEnabled: boolean;
   readonly fastModeActive: boolean;
@@ -1001,6 +1015,14 @@ export interface ChatHostMethodMap {
     readonly result: { readonly records: readonly QuestionRecord[] };
   };
   /**
+   * Takes sent answers back while omp has not read them yet (the queued notice `message` leaves omp's queue): they wait
+   * again, changeable, in the Questions panel. Refused once omp has read them. The records taken back.
+   */
+  readonly reopen_answers: {
+    readonly params: ReopenAnswersParams;
+    readonly result: { readonly records: readonly QuestionRecord[] };
+  };
+  /**
    * The roles Ctrl+P walks: omp's `cycleOrder` setting, the roles of it that resolve to an available model (omp skips the
    * others, and `default` falls back to the live model), and the one the live model is (null when none is).
    */
@@ -1443,6 +1465,7 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   answer_question: AnswerQuestionParams,
   skip_question: SkipQuestionParams,
   send_answers: EmptyParams,
+  reopen_answers: ReopenAnswersParams,
   get_model_hub: EmptyParams,
   get_model_menu: EmptyParams,
   assign_model_role: AssignModelRoleParams,

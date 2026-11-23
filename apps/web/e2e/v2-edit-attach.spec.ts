@@ -135,4 +135,39 @@ realTest.describe("new UI edit and attachments", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a message queued while omp works shows its picture in its pill, and Edit puts the picture back in the box with its words",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      const box = page.getByRole("textbox", { name: "Message" });
+      await box.fill("slow_tool 20");
+      await box.press("Enter");
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible({
+        timeout: 60_000,
+      });
+      await box.evaluate((element, data) => {
+        const bytes = Uint8Array.from(atob(data), (char) => char.charCodeAt(0));
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([bytes], "pixel.png", { type: "image/png" }));
+        element.dispatchEvent(
+          new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }),
+        );
+      }, PIXEL);
+      await expect(box).toHaveValue("[Image #1, 1x1] ");
+      await box.fill("after that, look at [Image #1, 1x1]");
+      // Ctrl+Enter: a follow-up, after the turn, so it waits in its pill while the tool runs.
+      await box.press("Control+Enter");
+      const queued = page.getByRole("list", { name: "Queued messages" });
+      await expect(queued.getByRole("listitem")).toHaveCount(1, { timeout: 30_000 });
+      await expect(queued.getByRole("img", { name: "Image 1" })).toBeVisible();
+
+      await queued.getByRole("button", { name: "Edit queued message" }).click();
+      await expect(queued).toHaveCount(0);
+      await expect(box).toHaveValue("after that, look at [Image #1, 1x1]");
+      await expect(page.getByRole("list", { name: "Attachments" })).toContainText("Image 1");
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

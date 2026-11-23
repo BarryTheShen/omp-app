@@ -31,3 +31,18 @@ export function usePhone(): boolean {
     return () => query.removeEventListener("change", notify);
   }, isPhone);
 }
+
+/** The CSS `short:` variant: a phone on its side, an iPad's small window, a short computer window. */
+export const SHORT = "(max-height: 700px)";
+
+/** Whether the window is short now (`SHORT`): the chat list then keeps its room for chats. */
+export function useShort(): boolean {
+  return useSyncExternalStore(
+    (notify) => {
+      const query = matchMedia(SHORT);
+      query.addEventListener("change", notify);
+      return () => query.removeEventListener("change", notify);
+    },
+    () => matchMedia(SHORT).matches,
+  );
+}

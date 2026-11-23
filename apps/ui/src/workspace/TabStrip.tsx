@@ -6,9 +6,10 @@ import { useSidewaysRow } from "../sidewaysRow";
 import type { WorkspaceTab } from "./tabs";
 
 /** What a workspace's tab carries while it is dragged along the strip. */
-const TAB_TYPE = "application/x-omp-app-workspace";
+export const TAB_TYPE = "application/x-omp-app-workspace";
 
-const carriesTab = (event: DragEvent): boolean => event.dataTransfer.types.includes(TAB_TYPE);
+export const carriesTab = (event: DragEvent): boolean =>
+  event.dataTransfer.types.includes(TAB_TYPE);
 
 /**
  * The workspaces (#2791), as kitty's tab bar, on top: always shown, with + after them for a new one. A click shows a
@@ -114,7 +115,8 @@ export function TabStrip({
               )}
               <button
                 type="button"
-                aria-label={`Close the workspace ${label}`}
+                aria-label="Close workspace"
+                title={`Close the workspace ${label}`}
                 className="grid size-5 shrink-0 place-items-center rounded-sm text-t3 opacity-0 group-hover/tab:opacity-100 hover:bg-l2 hover:text-t1 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 tablet:size-11"
                 onClick={() => onClose(tab.id)}
               >
@@ -137,7 +139,7 @@ export function TabStrip({
   );
 }
 
-function RenameInput({
+export function RenameInput({
   initial,
   onDone,
 }: {

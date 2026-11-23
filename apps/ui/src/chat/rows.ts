@@ -74,6 +74,23 @@ export function isLeadIn(text: string): boolean {
   return line.length > 0 && line.length < LEAD_IN_MAX && line.endsWith(":") && !line.includes("\n");
 }
 
+/**
+ * A lead-in as a group's title: plain words. The line keeps its Markdown where it is drawn in the group; the title is
+ * one line of text, so `**7.341**` reads 7.341 there, not with its stars. Code marks go, a link keeps its words, and a
+ * star or underscore inside a word (`snake_case`, `2*3*4`) stays.
+ */
+export function leadTitle(text: string): string {
+  return text
+    .trim()
+    .replace(/:$/, "")
+    .replace(/!?\[([^\]\n]*)\]\([^)\s]*\)/g, "$1")
+    .replace(/(\*\*|__)(?=\S)(.+?)(?<=\S)\1/g, "$2")
+    .replace(/(?<![\w*])\*(?=\S)(.+?)(?<=\S)\*(?![\w*])/g, "$1")
+    .replace(/(?<!\w)_(?=\S)(.+?)(?<=\S)_(?!\w)/g, "$1")
+    .replace(/~~(?=\S)(.+?)(?<=\S)~~/g, "$1")
+    .replaceAll("`", "");
+}
+
 /** A `!` or `$` run omp saved in the session (its `bashExecution` and `pythonExecution` messages). */
 function savedShellRun(entry: SessionEntry): ShellRunView | null {
   if (entry.type !== "message") return null;

@@ -8,7 +8,7 @@ import type { ChatController } from "../chat/controller";
 import type { PlanProposal } from "../chat/store";
 import type { QuestionsSnapshot } from "./questions";
 
-const NO_QUESTIONS: QuestionsSnapshot = { records: null, open: 0 };
+const NO_QUESTIONS: QuestionsSnapshot = { records: null, open: 0, wanted: false };
 const NO_REQUESTS: readonly HostDialogRequest[] = [];
 const noSubscription = (): (() => void) => () => undefined;
 const noQuestions = (): QuestionsSnapshot => NO_QUESTIONS;

@@ -52,6 +52,7 @@ import { LiteShell } from "./lite/LiteShell";
 import { isLiteView } from "./lite/lite";
 import { loadable } from "./loadable";
 import { setPageErrorSink } from "./pageErrors";
+import { reloadPage, traceReloads } from "./pageReload";
 import { PairingScreen } from "./pairing/PairingScreen";
 import { takePairingCode } from "./pairing/pairing-api";
 import { RequestPrompt } from "./pairing/RequestPrompt";
@@ -64,7 +65,7 @@ import { SidePaneContext } from "./panels/SidePane";
 import { traceFollow } from "./perf/followTrace";
 import { traceScrolling } from "./perf/scrollTrace";
 import { traceViewport } from "./perf/viewportTrace";
-import { isPhone, usePhone } from "./phone";
+import { isPhone, usePhone, useShort } from "./phone";
 import { registerWorker, useNotificationOpens } from "./push/push";
 import { SecretNotice } from "./secrets/SecretNotice";
 import type { SettingsPlace } from "./settings/SettingsPage";
@@ -83,6 +84,7 @@ import {
   type WorkspaceHandle,
   type WorkspaceView,
 } from "./workspace/Workspace";
+import { WorkspacesStore } from "./workspace/workspaces";
 
 /** The settings sheet, loaded a little after the app is ready (`preloadPages`). */
 const settingsPage = loadable(() =>
@@ -208,7 +210,7 @@ export function App(): ReactNode {
   useEffect(() => {
     const onHashChange = (): void => {
       const token = new URLSearchParams(window.location.hash.slice(1)).get("token");
-      if (token !== null && token.length > 0) window.location.reload();
+      if (token !== null && token.length > 0) reloadPage("launch-link");
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
@@ -318,10 +320,26 @@ function Shell({
       }),
     [client],
   );
+  // The page's own reloads, watched, in the server's debug log (`pageReload.ts`: an iPhone's Home Screen app could keep
+  // a reload from finishing).
+  useEffect(
+    () =>
+      traceReloads((trace) => {
+        client
+          .port(AppPort)
+          .reportClientTrace(trace)
+          .catch(() => undefined);
+      }),
+    [client],
+  );
   /** On a phone: the list of chats, or the chat. A phone opens on the chat: the workspace starts it on a new one. */
   const [showChat, setShowChat] = useState(isPhone);
   const workspace = useRef<WorkspaceHandle>(null);
+  /** The workspaces, from the workspace to the chat list, which shows them while it is open. */
+  const [workspaces] = useState(() => new WorkspacesStore());
   const phone = usePhone();
+  /** A short window keeps the chat list's room for chats: the workspaces stay tabs on top there. */
+  const short = useShort();
   // A window that narrows into the phone layout (an iPad's Split View) goes on showing the chat in front, not the
   // list; a blank window shows the list. Set while rendering, so the list is never drawn over the chat first (#2822).
   const [phoneBefore, setPhoneBefore] = useState(phone);
@@ -611,6 +629,7 @@ function Shell({
         }
         edge={phone ? undefined : <ListEdge width={chatList.width} onResize={chatList.resize} />}
         onHide={phone ? undefined : toggleList}
+        workspaces={short ? undefined : workspaces}
       />
       <main
         data-tour="workspace"
@@ -685,6 +704,8 @@ function Shell({
               onView={setView}
               onShown={showChatView}
               linkedChat={linkedChat}
+              workspaces={workspaces}
+              strip={listHidden || short}
               stripLeading={
                 listHidden ? (
                   <Button

@@ -1,7 +1,7 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, test } from "vitest";
 import type { ActiveTool } from "../vendor/collab-web/lib/types";
-import { buildRows, groupToolRuns, type TranscriptRow } from "./rows";
+import { buildRows, groupToolRuns, leadTitle, type TranscriptRow } from "./rows";
 
 const T = 1_790_000_000_000;
 
@@ -423,5 +423,27 @@ describe("groupToolRuns", () => {
       expect.stringMatching(/^assistant:/),
       "failure",
     ]);
+  });
+});
+
+describe("a lead-in as a group's title", () => {
+  test("reads as plain words: no Markdown marks, no closing colon", () => {
+    expect(
+      leadTitle(
+        "Perplexity on the new code: **7.341** (BF16 reference 7.34), unchanged. GSM8K and the 19-check suite are next:",
+      ),
+    ).toBe(
+      "Perplexity on the new code: 7.341 (BF16 reference 7.34), unchanged. GSM8K and the 19-check suite are next",
+    );
+    expect(leadTitle("Reading _the_ `config.yml` and [the docs](https://example.com/x):")).toBe(
+      "Reading the config.yml and the docs",
+    );
+    expect(leadTitle("Checking ~~old~~ *new* __runs__:")).toBe("Checking old new runs");
+  });
+
+  test("keeps stars and underscores that are part of the words", () => {
+    expect(leadTitle("Running snake_case_name with 2*3*4 cores:")).toBe(
+      "Running snake_case_name with 2*3*4 cores",
+    );
   });
 });

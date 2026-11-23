@@ -100,7 +100,11 @@ realTest.describe("new UI: the dashboard", () => {
       await expect(dashboard(page).getByRole("heading", { name: "Dashboard" })).toBeVisible({
         timeout: 60_000,
       });
-      await workspaces(page).getByRole("button", { name: "Close the workspace Dashboard" }).click();
+      await workspaces(page)
+        .locator("div")
+        .filter({ has: page.getByRole("tab", { name: "Dashboard" }) })
+        .getByRole("button", { name: "Close workspace" })
+        .click();
       await expect(dashboard(page)).toHaveCount(0);
       await expect(paused(page)).toHaveCount(0);
       await page.keyboard.press("Control+Shift+KeyD");

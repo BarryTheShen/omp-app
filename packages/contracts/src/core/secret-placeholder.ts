@@ -4,8 +4,9 @@
  * name has the code alone. The transcript's Markdown draws one as a lock and the name (`secretPlaceholders.ts` in the
  * vendored transcript, which keeps its own copy of this pattern).
  */
-const PLACEHOLDER = /\$\$(?:([A-Z0-9]+)_)?[A-Z0-9]{8,}(?::[ULCM])?\$\$/g;
-const AT_START = new RegExp(`^${PLACEHOLDER.source}`);
+export const SECRET_PLACEHOLDER_PATTERN = /\$\$(?:([A-Z0-9]+)_)?[A-Z0-9]{8,}(?::[ULCM])?\$\$/;
+const PLACEHOLDER = new RegExp(SECRET_PLACEHOLDER_PATTERN.source, "g");
+const AT_START = new RegExp(`^${SECRET_PLACEHOLDER_PATTERN.source}`);
 
 /** Whether the text starts with a secret's placeholder, which is a word of a message, never Python's `$$`. */
 export function startsWithSecretPlaceholder(text: string): boolean {

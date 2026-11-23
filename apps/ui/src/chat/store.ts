@@ -12,6 +12,7 @@ import type {
   GoalAnswer,
   HostDialogRequest,
   PlanModeStatus,
+  QueuedImages,
   RoleModel,
   SubagentSnapshot,
   UiOpenUrlEvent,
@@ -44,10 +45,14 @@ export interface ChatModel {
   readonly name: string;
 }
 
-/** Messages waiting in omp's two queues that can still be taken back (not yet sent into the reply). */
+/**
+ * Messages waiting in omp's two queues that can still be taken back (not yet sent into the reply), and the pictures each
+ * carries (`images`, in the same order; empty lists for none).
+ */
 export interface ChatQueue {
   readonly steering: readonly string[];
   readonly followUp: readonly string[];
+  readonly images: QueuedImages;
 }
 
 /** A message as it was sent: its text and pictures. */
@@ -236,7 +241,8 @@ function withWidget(
   ];
 }
 
-const NO_QUEUE: ChatQueue = { steering: [], followUp: [] };
+const NO_IMAGES: QueuedImages = { steering: [], followUp: [] };
+const NO_QUEUE: ChatQueue = { steering: [], followUp: [], images: NO_IMAGES };
 
 const EMPTY: ChatSnapshot = {
   entries: [],
@@ -387,9 +393,15 @@ function takeBackable(queue: {
   readonly steering: readonly string[];
   readonly followUp: readonly string[];
   readonly liveSteered: number;
+  readonly images?: QueuedImages;
 }): ChatQueue {
   if (queue.steering.length === 0 && queue.followUp.length === 0) return NO_QUEUE;
-  return { steering: queue.steering.slice(queue.liveSteered), followUp: queue.followUp };
+  const images = queue.images ?? NO_IMAGES;
+  return {
+    steering: queue.steering.slice(queue.liveSteered),
+    followUp: queue.followUp,
+    images: { steering: images.steering.slice(queue.liveSteered), followUp: images.followUp },
+  };
 }
 
 export function toChatModel(model: NonNullable<ChatHostState["model"]>): ChatModel {

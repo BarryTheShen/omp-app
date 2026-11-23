@@ -12,7 +12,7 @@
  * A prompt is, in omp's order (`rpc-mode.ts:1764-1878`): an extension's `input` hook, then `/skill:<name>`, then a
  * built-in slash command (omp's own executor, shared with its ACP host), then `session.prompt`.
  */
-import { AgentBusyError, agentPauseGate } from "@oh-my-pi/pi-agent-core";
+import { AgentBusyError, type AgentMessage, agentPauseGate } from "@oh-my-pi/pi-agent-core";
 import { ThinkingLevel } from "@oh-my-pi/pi-agent-core/thinking";
 import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@oh-my-pi/pi-ai/registry";
@@ -45,6 +45,10 @@ import {
   SKILL_PROMPT_MESSAGE_TYPE,
   USER_INTERRUPT_LABEL,
 } from "@oh-my-pi/pi-coding-agent/session/messages";
+import {
+  isUserAuthoredQueuedMessage,
+  toRestoredQueuedMessage,
+} from "@oh-my-pi/pi-coding-agent/session/queued-messages";
 import { isSessionSettled } from "@oh-my-pi/pi-coding-agent/session/session-settle";
 import { executeAcpBuiltinSlashCommand } from "@oh-my-pi/pi-coding-agent/slash-commands/acp-builtins";
 import { buildAvailableSlashCommands } from "@oh-my-pi/pi-coding-agent/slash-commands/available-commands";
@@ -74,6 +78,7 @@ import {
   type ProviderAccounts,
   parseChatHostParams,
   parseServerLine,
+  type QueuedImages,
   type QueuedInputParams,
   type QueuedMessage,
   type RoleModel,
@@ -387,7 +392,11 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     uiContext: ui,
   });
   session.subscribe((event) => {
-    events.forward(event);
+    // omp's queue report names its messages by text only: the pictures they carry go with it (`QueuedImages`).
+    if (event.type === "queue_update") {
+      const images = queuedImages(session);
+      events.forward(images === undefined ? event : Object.assign({}, event, { images }));
+    } else events.forward(event);
     // Before the prompt results and the settle report, so a continuation decided at this `agent_end` counts as pending.
     goal.observe(event);
     results.observe(event);
@@ -585,6 +594,15 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     }),
     skip_question: async ({ id }, sequence) => ({ record: await questions.skip(id, sequence) }),
     send_answers: async (_params, sequence) => ({ records: await questions.sendWaiting(sequence) }),
+    // The answers went in as a steer (`sendAnswer`): taken back from omp's steering queue while it has not read them,
+    // or, after Edit rewound the chat to just before them, out of the chat already.
+    reopen_answers: async ({ message, from }) => ({
+      records: await questions.reopen(
+        message,
+        () => from === "chat" || session.takeQueuedMessage(message, "steering") !== undefined,
+        from === "chat",
+      ),
+    }),
     get_model_hub: async () => readModelHub(session),
     get_model_menu: async () => readModelMenu(session),
     assign_model_role: (params) => assignModelRole(session, params),
@@ -1351,6 +1369,26 @@ function queuedMessage(message: QueuedMessage): QueuedMessage {
     : { text: message.text };
 }
 
+/**
+ * The pictures of the messages in omp's queue, in the order `getQueuedMessages` lists their texts (its own filter and
+ * order: steers taken into the reply first, then the steering queue; the follow-ups); none while no queued message has
+ * one.
+ */
+function queuedImages(session: AgentSession): QueuedImages | undefined {
+  const of = (messages: readonly AgentMessage[]) =>
+    messages
+      .filter(isUserAuthoredQueuedMessage)
+      .map((message) => toRestoredQueuedMessage(message).images ?? []);
+  const steering = of([
+    ...session.agent.peekLiveSteeredMessages(),
+    ...session.agent.peekSteeringQueue(),
+  ]);
+  const followUp = of(session.agent.peekFollowUpQueue());
+  return [...steering, ...followUp].some((images) => images.length > 0)
+    ? { steering, followUp }
+    : undefined;
+}
+
 /** The fields of omp's `BashResult` and `PythonResult` the app reads. */
 function shellRun(result: ShellRunResult): ShellRunResult {
   return {
@@ -1415,6 +1453,8 @@ function readState(session: AgentSession): ChatHostState {
   const slowModeScope = session.getSlowModeScope();
   const usageLimit = session.getUsageLimitState();
   const contextUsage = session.getContextUsage();
+  const queue = session.getQueuedMessages();
+  const queuePictures = queuedImages(session);
   return {
     ...(model ? { model } : {}),
     ...(thinkingLevel ? { thinkingLevel } : {}),
@@ -1432,7 +1472,7 @@ function readState(session: AgentSession): ChatHostState {
     // Background jobs, child agents or deliveries can still wake the run (omp 18.22 `rpc-mode.ts`).
     hasPendingAsyncWork: session.wakeSources !== undefined,
     isSettled: isSessionSettled(session),
-    queuedMessages: session.getQueuedMessages(),
+    queuedMessages: queuePictures === undefined ? queue : { ...queue, images: queuePictures },
     todoPhases: session.getTodoPhases(),
     fastModeEnabled: session.isFastModeEnabled(),
     fastModeActive: session.isFastModeActive(),

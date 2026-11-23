@@ -112,7 +112,8 @@ realTest.describe("questions omp asks without waiting", () => {
       await expect(message).toContainText("Your answers from Questions");
       await expect(message.locator(".tr-row--custom")).toHaveCount(1);
       await expect(message.locator(".tr-row--user")).toHaveCount(0);
-      await expect(message.getByRole("button", { name: "Edit" })).toHaveCount(0);
+      // Not a message you typed: no "Edit this message" (its own Edit takes the answers back to the panel).
+      await expect(message.getByRole("button", { name: "Edit this message" })).toHaveCount(0);
       await expect(message).toContainText('"Publish" (publish):');
       await expect(message).toContainText("Public copy");
       await expect(message).toContainText("Note: keep issues off");
@@ -606,6 +607,101 @@ realTest.describe("questions omp asks without waiting", () => {
         ),
       ).toBeVisible({ timeout: 60_000 });
       await expect(card).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "your answers, while they wait for omp, have Edit: it takes them back to the Questions panel to change, and the changed answer is the one that goes",
+    async ({ realApp }) => {
+      // The fake model's long reply streams for a while under a loaded machine; the answers go once it ends.
+      realTest.slow();
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      const one = { questions: [{ id: "color", question: "Which color?" }] };
+      await box(page).fill(`call_tool ask_async ${JSON.stringify(one)}`);
+      await box(page).press("Enter");
+      await expect(
+        transcript(page).getByText("tool said: Asked 1 question (color).", { exact: false }),
+      ).toBeVisible({ timeout: 90_000 });
+      // omp streams a long reply: the answers wait in its queue until it ends, as a steer does (one sent during a tool
+      // call goes in at once).
+      await box(page).fill("stream_steady");
+      await box(page).press("Enter");
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible({
+        timeout: 60_000,
+      });
+      await rail(page).getByRole("button", { name: "Questions, 1 waiting for you" }).click();
+      const card = panel(page).getByRole("article", { name: "Question: Which color?" });
+      await card.getByRole("textbox", { name: "Your answer" }).fill("Green");
+      // The only open question: its button sends.
+      await card.getByRole("button", { name: "Send answer", exact: true }).click();
+      const queued = page.getByRole("list", { name: "Queued messages" });
+      await expect(queued).toContainText("Your answers", { timeout: 30_000 });
+
+      await queued.getByRole("button", { name: "Edit your answers" }).click();
+      await expect(queued).toHaveCount(0);
+      await expect(panel(page).getByRole("tab", { name: /^Questions for you/ })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      const waiting = panel(page).getByRole("article", { name: "Ready to send: Which color?" });
+      await expect(waiting).toContainText("Green");
+      await waiting.getByRole("button", { name: "Change" }).click();
+      const changing = panel(page).getByRole("article", { name: "Question: Which color?" });
+      await changing.getByRole("textbox", { name: "Your answer" }).fill("Blue");
+      await changing.getByRole("button", { name: /^(Save answer|Send answers?)$/ }).click();
+      // The changed answer waits for omp in Green's place, and is the one omp gets.
+      await expect(queued).toContainText(
+        /Answer to your question "Which color\?" \(color\):\s*Blue/,
+      );
+      await expect(queued).not.toContainText("Green");
+      await expect(
+        transcript(page).getByText(/Answer to your question "Which color\?" \(color\):\s*Blue/),
+      ).toBeVisible({ timeout: 240_000 });
+      await expect(transcript(page).getByText("Green", { exact: true })).toHaveCount(0);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "Edit on your answers in the chat goes back to just before them, and they wait in the Questions panel to be changed and sent again",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      const one = { questions: [{ id: "color", question: "Which color?" }] };
+      await box(page).fill(`call_tool ask_async ${JSON.stringify(one)}`);
+      await box(page).press("Enter");
+      await rail(page)
+        .getByRole("button", { name: "Questions, 1 waiting for you" })
+        .click({ timeout: 90_000 });
+      const card = panel(page).getByRole("article", { name: "Question: Which color?" });
+      await card.getByRole("textbox", { name: "Your answer" }).fill("Green");
+      await card.getByRole("button", { name: "Send answer", exact: true }).click();
+      const given = transcript(page).getByText(
+        /Answer to your question "Which color\?" \(color\):\s*Green/,
+      );
+      await expect(given).toBeVisible({ timeout: 60_000 });
+      // Edit is offered once omp's turn is over and the chat's file is read back.
+      const edit = transcript(page).getByRole("button", { name: "Edit your answers" });
+      await given.hover();
+      await expect(edit).toBeVisible({ timeout: 60_000 });
+      await edit.click();
+
+      // Back to just before them: the answers wait in the panel, changeable.
+      await expect(given).toHaveCount(0, { timeout: 30_000 });
+      const waiting = panel(page).getByRole("article", { name: "Ready to send: Which color?" });
+      await expect(waiting).toContainText("Green");
+      await waiting.getByRole("button", { name: "Change" }).click();
+      const changing = panel(page).getByRole("article", { name: "Question: Which color?" });
+      await changing.getByRole("textbox", { name: "Your answer" }).fill("Blue");
+      await changing.getByRole("button", { name: /^(Save answer|Send answers?)$/ }).click();
+      await expect(
+        transcript(page).getByText(/Answer to your question "Which color\?" \(color\):\s*Blue/),
+      ).toBeVisible({ timeout: 60_000 });
+      await expect(given).toHaveCount(0);
       expect(realApp.problems).toEqual([]);
     },
   );

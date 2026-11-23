@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { CONNECTION_LOOK, connectionKind, useConnectionState } from "../ConnectionDot";
 import { KEYS } from "../keys/table";
 import { reconnectOrReload } from "../linkRescue";
+import { reloadPage } from "../pageReload";
 import {
   type Bridge,
   checkDesktopServer,
@@ -222,7 +223,7 @@ export function ServerMenu({
           </DropdownMenuItem>
           <DropdownMenuItem
             onClick={() =>
-              event.state === "closed" ? window.location.reload() : reconnectOrReload(client)
+              event.state === "closed" ? reloadPage("closed") : reconnectOrReload(client)
             }
           >
             {event.state === "closed" ? "Reload" : "Reconnect now"}

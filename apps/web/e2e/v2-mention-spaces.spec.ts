@@ -139,4 +139,33 @@ realTest.describe("new UI @ menu: names with spaces", () => {
       expect(realApp.problems).toEqual([]);
     },
   );
+
+  realTest(
+    "a mention in the box is one piece: Backspace at its end takes the whole label or file, never half of it",
+    async ({ realApp }) => {
+      const page = await newChat(realApp);
+      await box(page).pressSequentially("read @summer 2027 int");
+      await expect(menu(page).getByRole("option", { name: /Summer 2027 Internship/ })).toBeVisible({
+        timeout: 30_000,
+      });
+      await box(page).press("Enter");
+      await expect(box(page)).toHaveValue(SUMMER);
+      // The space after it, then the mention whole.
+      await box(page).press("Backspace");
+      await box(page).press("Backspace");
+      await expect(box(page)).toHaveValue("read ");
+
+      await box(page).fill("");
+      await box(page).pressSequentially("see @lecture 3");
+      await expect(menu(page).getByRole("option", { name: /lecture 3 notes\.txt/ })).toBeVisible({
+        timeout: 30_000,
+      });
+      await box(page).press("Enter");
+      await expect(box(page)).toHaveValue('see @"lecture 3 notes.txt" ');
+      await box(page).press("Backspace");
+      await box(page).press("Backspace");
+      await expect(box(page)).toHaveValue("see ");
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

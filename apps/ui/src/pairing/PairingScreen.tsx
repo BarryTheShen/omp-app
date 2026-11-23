@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { WindowServerChoice } from "../desktop/ServerSection";
 import { embed, useEmbed } from "../lite/embed";
+import { reloadPage } from "../pageReload";
 import { guessThisDevice } from "./device-name";
 import { frameOfThisPage, pairingInsideNotice } from "./framed-by";
 import { askMachine, askToPair, claimPairing, enterPairingCode } from "./pairing-api";
@@ -31,7 +32,7 @@ const keep = embed?.keepsCredential === true ? "host" : null;
 function openApp(key: string | undefined): void {
   if (key !== undefined) embed?.keepCredential(key);
   window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-  window.location.reload();
+  reloadPage("paired");
 }
 
 /**

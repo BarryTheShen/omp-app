@@ -2478,7 +2478,7 @@ const WORKSPACES_TOUR: Tour = {
     {
       target: NEW_WORKSPACE,
       title: "A new workspace",
-      text: "Click <b>New workspace</b>. A workspace is a tab on top with windows of its own, and it starts as one blank window.",
+      text: "Click <b>+</b> beside <b>Workspaces</b>. A workspace is a row at the top of the chat list with windows of its own, and it starts as one blank window.",
       action: { kind: "click" },
     },
     {
@@ -2497,7 +2497,7 @@ const WORKSPACES_TOUR: Tour = {
     {
       target: TABS,
       title: "Your workspaces",
-      text: "Each workspace is a tab here, named after its first chat. Click one to show it, double-click to rename it, drag it to move it; <b>+</b> adds one. Closing a window or a workspace leaves its chats running, in the list.",
+      text: "Each workspace is a row here, named after its first chat. Click one to show it, double-click to rename it, drag it to move it; <b>+</b> adds one, and the name folds the list away. With the chat list hidden they are tabs on top. Closing a window or a workspace leaves its chats running, in the list.",
       action: next,
     },
     {
@@ -3527,11 +3527,45 @@ const ACCESS_GRANTS_TOUR: Tour = {
   ],
 };
 
+const WORKSPACES_LIST_TOUR: Tour = {
+  id: "workspaces-list-2026-11-23",
+  title: "Workspaces in the chat list",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: TABS,
+      title: "Your workspaces, here",
+      text: "The workspaces are rows at the top of the chat list now, the one shown marked: click one to show it, double-click to rename it, drag it to move it. With the list hidden ({chatList}) they are tabs on top again.",
+      action: next,
+    },
+    {
+      target: NEW_WORKSPACE,
+      title: "A new one",
+      text: "<b>+</b> adds a workspace. Click a section's name (Workspaces, Pinned, Chats) to fold it away; the list keeps it folded.",
+      action: next,
+    },
+    {
+      target: MESSAGE_BOX,
+      title: "References are one piece",
+      text: "A picture's <b>[Image #1, …]</b>, a mention from the <b>@</b> menu and a secret show as chips in the box: Backspace takes one whole, and the caret steps over it.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-23-workspaces-list",
+    when: "2026-11-23T20:30:00Z",
+    summary:
+      "Workspaces are rows at the top of the chat list (tabs on top only while the list is hidden), and Workspaces, Pinned and Chats fold. In the message box a picture, a mention or a secret is one piece. A message waiting for omp shows its pictures. Your answers from Questions have Edit, while they wait and in the chat, which takes them back to the panel. A reload that does not finish on an iPhone is tried again, then says so.",
+    tours: [WORKSPACES_LIST_TOUR],
+  },
   {
     id: "2026-11-22-access-grants",
     when: "2026-11-22T23:10:00Z",

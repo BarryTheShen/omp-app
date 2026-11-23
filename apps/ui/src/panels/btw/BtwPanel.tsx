@@ -221,6 +221,16 @@ function BtwTabs({ controller }: { readonly controller: ChatController }): React
     setPicked("side");
     controller.btw.revealed();
   }, [sideWanted, controller]);
+  // Answers taken back to change (`reopenAnswers`) bring the questions forward.
+  const questionsWanted = useSyncExternalStore(
+    controller.questions.subscribe,
+    () => controller.questions.getSnapshot().wanted,
+  );
+  useEffect(() => {
+    if (!questionsWanted) return;
+    setPicked("questions");
+    controller.questions.revealed();
+  }, [questionsWanted, controller]);
   const tab: BtwTab = picked ?? (open > 0 ? "questions" : "side");
 
   return (

@@ -1646,6 +1646,24 @@ export class ChatController {
     }
   }
 
+  /**
+   * Takes sent answers back while omp has not read them (`message`, their notice): they wait again, changeable, and the
+   * Questions panel is asked to show them. `from`: out of omp's queue, or out of the chat after Edit rewound it.
+   */
+  async reopenAnswers(
+    message: string,
+    from: "queue" | "chat" = "queue",
+  ): Promise<readonly QuestionRecord[]> {
+    try {
+      const { records } = await this.#request("reopen_answers", { message, from });
+      for (const record of records) this.questions.put(record);
+      this.questions.reveal();
+      return records;
+    } catch (failure) {
+      throw olderQuestions(failure);
+    }
+  }
+
   /** Files and folders of the chat's folder that match an `@` mention. */
   async searchFiles(query: string): Promise<readonly FileSearchCandidate[]> {
     const found = await this.client

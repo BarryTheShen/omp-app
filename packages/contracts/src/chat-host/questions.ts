@@ -30,6 +30,11 @@ export interface QuestionAnswer {
   readonly held?: true;
   /** When it went to the agent (epoch ms); absent while held, and on answers from before answers waited. */
   readonly sentAt?: number;
+  /**
+   * True on an answer the person took back (`reopen_answers`) before omp read it, until they change it: it waits again,
+   * and the answers go only when sent (Send answers) or once every answer taken back is changed.
+   */
+  readonly reopened?: true;
 }
 
 /** A question an agent asked, and its answer once there is one. */
@@ -67,6 +72,17 @@ export type AnswerQuestionParams = z.infer<typeof AnswerQuestionParams>;
 
 export const SkipQuestionParams = z.object({ id: z.string().min(1) });
 export type SkipQuestionParams = z.infer<typeof SkipQuestionParams>;
+
+/**
+ * Takes sent answers back before omp reads them: `message`, the notice that carries them. `from: "queue"` (the default)
+ * takes it out of omp's queue; `from: "chat"`, after the chat was rewound to just before it (Edit in the transcript), the
+ * message is out of the chat already.
+ */
+export const ReopenAnswersParams = z.object({
+  message: z.string().min(1).max(500_000),
+  from: z.enum(["queue", "chat"]).optional(),
+});
+export type ReopenAnswersParams = z.infer<typeof ReopenAnswersParams>;
 
 /** A question was asked, answered or skipped: its whole record. */
 export interface QuestionRecordEvent {
