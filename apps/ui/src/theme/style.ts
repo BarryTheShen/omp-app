@@ -23,7 +23,7 @@ export const STYLES: readonly AppStyle[] = [
   {
     id: "glass",
     name: "Glass",
-    words: "Large radii, floating translucent panes, a soft colour field.",
+    words: "Large radii, floating translucent panes on the theme's own page.",
   },
   { id: "roomy", name: "Roomy", words: "iPhone text sizes and finger-size rows everywhere." },
 ];
