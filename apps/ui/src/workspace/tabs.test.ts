@@ -4,6 +4,7 @@ import {
   blankTab,
   closeTab,
   goToTab,
+  idleTabs,
   initialTabs,
   insertTab,
   layoutStorage,
@@ -12,9 +13,13 @@ import {
   moveTab,
   moveTabTo,
   nameAfterChat,
+  pinTab,
+  previewTab,
   renameTab,
   reopenTab,
+  saveLayout,
   stepTab,
+  touchTabs,
   type WorkspaceTab,
   type WorkspaceTabs,
 } from "./tabs";
@@ -261,5 +266,88 @@ describe("where a page keeps its tabs", () => {
   test("a browser tab keeps them for the next start whatever its address says", () => {
     expect(layoutStorage(false, "")).toBe("the first window's storage");
     expect(layoutStorage(false, "?window=window-2")).toBe("the first window's storage");
+  });
+});
+
+describe("fewer workspaces: previews, pins, idle ones", () => {
+  const windows = (count: number) =>
+    ({
+      grid: {
+        root: {
+          type: "branch",
+          data: Array.from({ length: count }, () => ({ type: "leaf", data: {} })),
+        },
+      },
+      panels: {},
+    }) as unknown as SerializedDockview;
+  const withPreview = (): WorkspaceTabs => ({
+    tabs: [
+      { id: "a", title: null, layout: null },
+      { id: "p", title: null, layout: null, preview: true },
+    ],
+    active: "p",
+  });
+  const HOUR = 3_600_000;
+
+  test("a preview is kept by a name, a second window, or a pin; an empty name or one window keeps it a preview", () => {
+    expect(previewTab(withPreview())?.id).toBe("p");
+    expect(previewTab(renameTab(withPreview(), "p", "Plans"))).toBeUndefined();
+    expect(previewTab(renameTab(withPreview(), "p", "  "))?.id).toBe("p");
+    expect(previewTab(saveLayout(withPreview(), "p", windows(2)))).toBeUndefined();
+    expect(previewTab(saveLayout(withPreview(), "p", windows(1)))?.id).toBe("p");
+    const pinned = pinTab(withPreview(), "p", true);
+    expect(pinned.tabs[1]).toMatchObject({ id: "p", pinned: true });
+    expect(previewTab(pinned)).toBeUndefined();
+    expect(pinTab(pinned, "p", false).tabs[1]?.pinned).toBeUndefined();
+  });
+
+  test("a preview closed and reopened comes back kept", () => {
+    // A chat in its window, beside a named workspace: one that held nothing is neither kept for Reopen nor left for it.
+    const chat = {
+      ...windows(1),
+      panels: { pane: { id: "pane" } },
+    } as unknown as SerializedDockview;
+    const shown = withPreview();
+    const holding = {
+      ...shown,
+      tabs: shown.tabs.map((tab) =>
+        tab.id === "p" ? { ...tab, layout: chat } : { ...tab, title: "Plans" },
+      ),
+    };
+    const closed = closeTab(holding, "p");
+    expect(ids(reopenTab(closed))).toEqual(["a", "p"]);
+    expect(previewTab(reopenTab(closed))).toBeUndefined();
+  });
+
+  test("stamping marks the given tabs and every one never stamped, and changes nothing when nothing is new", () => {
+    const state: WorkspaceTabs = {
+      tabs: [
+        { id: "a", title: null, layout: null, usedAt: 5 },
+        { id: "b", title: null, layout: null },
+      ],
+      active: "a",
+    };
+    const stamped = touchTabs(state, [], 100);
+    expect(stamped.tabs.map((tab) => tab.usedAt)).toEqual([5, 100]);
+    expect(touchTabs(stamped, [], 200)).toBe(stamped);
+    expect(touchTabs(stamped, ["a"], 300).tabs.map((tab) => tab.usedAt)).toEqual([300, 100]);
+  });
+
+  test("idle ones close after the limit; never the shown one, a pinned one, an unstamped one or a busy one", () => {
+    const now = 100 * HOUR;
+    const old = now - 13 * HOUR;
+    const state: WorkspaceTabs = {
+      tabs: [
+        { id: "shown", title: null, layout: null, usedAt: old },
+        { id: "old", title: null, layout: null, usedAt: old },
+        { id: "fresh", title: null, layout: null, usedAt: now - HOUR },
+        { id: "pinned", title: null, layout: null, usedAt: old, pinned: true },
+        { id: "unstamped", title: null, layout: null },
+        { id: "working", title: null, layout: null, usedAt: old },
+      ],
+      active: "shown",
+    };
+    expect(idleTabs(state, now, 12 * HOUR, (id) => id === "working")).toEqual(["old"]);
+    expect(idleTabs(state, now, 24 * HOUR, () => false)).toEqual([]);
   });
 });

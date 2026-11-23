@@ -1,9 +1,9 @@
 import { cn } from "cn";
-import { Plus, X } from "lucide-react";
+import { Pin, Plus, X } from "lucide-react";
 import { type DragEvent, type ReactNode, useRef, useState } from "react";
 import { isImeEnter } from "../keys/ime";
 import { useSidewaysRow } from "../sidewaysRow";
-import type { WorkspaceTab } from "./tabs";
+import { PREVIEW_HINT, type WorkspaceTab } from "./tabs";
 
 /** What a workspace's tab carries while it is dragged along the strip. */
 export const TAB_TYPE = "application/x-omp-app-workspace";
@@ -103,14 +103,22 @@ export function TabStrip({
                   type="button"
                   role="tab"
                   aria-selected={selected}
-                  className="min-w-0 flex-1 self-stretch truncate text-left outline-none focus-visible:underline"
+                  data-preview={tab.preview === true ? "" : undefined}
+                  title={tab.preview === true ? PREVIEW_HINT : undefined}
+                  className={cn(
+                    "flex min-w-0 flex-1 items-center gap-1 self-stretch text-left outline-none focus-visible:underline",
+                    tab.preview === true && "italic",
+                  )}
                   onClick={() => onActivate(tab.id)}
                   onDoubleClick={() => onRenaming(tab.id)}
                   onAuxClick={(event) => {
                     if (event.button === 1) onClose(tab.id);
                   }}
                 >
-                  {label}
+                  {tab.pinned === true && (
+                    <Pin className="size-3 shrink-0 fill-current text-t3" aria-hidden="true" />
+                  )}
+                  <span className="min-w-0 truncate">{label}</span>
                 </button>
               )}
               <button

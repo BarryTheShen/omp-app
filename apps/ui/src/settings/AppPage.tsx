@@ -17,6 +17,7 @@ import { OmpSection } from "./OmpSection";
 import { QuickPromptsSection } from "./QuickPromptsSection";
 import { SearchSection } from "./SearchSection";
 import { SharingSection } from "./SharingSection";
+import { WorkspacesSection } from "./WorkspacesSection";
 
 /**
  * The app's own settings, before omp's tabs: how it looks, a phone's quick prompts, the server it is connected to, the
@@ -92,6 +93,7 @@ export function AppPage({
       <div className="border-b border-l1 pb-5">
         <ThemeGallery />
       </div>
+      <WorkspacesSection />
       <PushSection client={client} />
       {phone && <QuickPromptsSection />}
       <ServerSection focusLink={focusServerLink} />

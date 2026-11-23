@@ -1,7 +1,8 @@
 import { cn } from "cn";
-import { AppWindow, X } from "lucide-react";
+import { AppWindow, Pin, X } from "lucide-react";
 import { type ReactNode, useState, useSyncExternalStore } from "react";
 import { carriesTab, RenameInput, TAB_TYPE } from "../workspace/TabStrip";
+import { PREVIEW_HINT } from "../workspace/tabs";
 import type { WorkspacesStore } from "../workspace/workspaces";
 
 const REVEAL =
@@ -11,7 +12,8 @@ const REVEAL =
  * The workspaces as rows at the top of the chat list, as Zen's sidebar lists a browser's spaces: the one shown marked.
  * A click shows one, a double click renames it (Enter keeps the name, Esc leaves it; an empty name goes back to its
  * first chat's title), a middle click or × closes it, and a drag moves it up or down. The same tabs as the strip on top
- * had (`TabStrip`), which comes back while the list is hidden.
+ * had (`TabStrip`), which comes back while the list is hidden. A preview's label is in italics. The pin button pins or
+ * unpins one (shown on hover; always, filled, on a pinned one).
  */
 export function WorkspaceList({ store }: { readonly store: WorkspacesStore }): ReactNode {
   const view = useSyncExternalStore(store.subscribe, store.getSnapshot);
@@ -68,6 +70,8 @@ export function WorkspaceList({ store }: { readonly store: WorkspacesStore }): R
                 type="button"
                 role="tab"
                 aria-selected={selected}
+                data-preview={tab.preview === true ? "" : undefined}
+                title={tab.preview === true ? PREVIEW_HINT : undefined}
                 className={cn(
                   "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-t2 outline-none group-hover/row:text-t1 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset tablet:h-11",
                   selected && "text-t1",
@@ -79,9 +83,33 @@ export function WorkspaceList({ store }: { readonly store: WorkspacesStore }): R
                 }}
               >
                 <AppWindow className="size-3.5 shrink-0 text-t3" aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate text-[0.8125rem]">{label}</span>
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-[0.8125rem]",
+                    tab.preview === true && "italic",
+                  )}
+                >
+                  {label}
+                </span>
               </button>
             )}
+            <button
+              type="button"
+              aria-label="Pin workspace"
+              aria-pressed={tab.pinned === true}
+              title={
+                tab.pinned === true
+                  ? `Pinned: ${label} never closes by itself. Click to unpin.`
+                  : `Pin ${label}: it never closes by itself`
+              }
+              className={cn(
+                "grid size-6 shrink-0 place-items-center rounded-sm text-t3 hover:bg-l2 hover:text-t1 tablet:size-11",
+                tab.pinned !== true && REVEAL,
+              )}
+              onClick={() => act.pin(tab.id, tab.pinned !== true)}
+            >
+              <Pin className={cn("size-3", tab.pinned === true && "fill-current")} />
+            </button>
             <button
               type="button"
               // Not named after the workspace: its label is its first chat's title, which the chat's own row has.

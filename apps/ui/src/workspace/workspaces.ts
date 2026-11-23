@@ -17,6 +17,8 @@ export interface WorkspacesActions {
   readonly renaming: (id: string | null) => void;
   /** A workspace dragged onto another's place. */
   readonly move: (id: string, to: number) => void;
+  /** Pins a workspace (never closed for not being used, a preview kept) or unpins it. */
+  readonly pin: (id: string, pinned: boolean) => void;
   readonly add: () => void;
 }
 
@@ -56,6 +58,11 @@ function sameView(a: WorkspacesView, b: WorkspacesView): boolean {
     return false;
   return a.tabs.every((tab, index) => {
     const other = b.tabs[index];
-    return other?.id === tab.id && a.labels.get(tab.id) === b.labels.get(other.id);
+    return (
+      other?.id === tab.id &&
+      a.labels.get(tab.id) === b.labels.get(other.id) &&
+      tab.preview === other.preview &&
+      tab.pinned === other.pinned
+    );
   });
 }

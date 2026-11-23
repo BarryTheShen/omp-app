@@ -15,7 +15,20 @@ export interface WorkspaceTab {
   readonly firstPane?: string | null;
   /** The windows and their chats; null until the workspace's first layout is saved. */
   readonly layout: SerializedDockview | null;
+  /**
+   * A preview (VS Code's preview tab): a chat opened in front into a workspace of its own, which the next one opened so
+   * takes the place of, until you type in it, name it, pin it or give it a second window (`keepTab`).
+   */
+  readonly preview?: true;
+  /** Pinned: never closed for not being used (`idleTabs`). */
+  readonly pinned?: true;
+  /** When it was last in front (ms since 1970): its coming to the front and its leaving it. Absent until first stamped. */
+  readonly usedAt?: number;
 }
+
+/** What a preview's label says when pointed at. */
+export const PREVIEW_HINT =
+  "Preview: the next chat you open from the list takes its place. Type in it, or pin it, to keep it.";
 
 /** A workspace closed, with the place it had in the strip: Reopen puts it back there (#2831). */
 export interface ClosedTab {
@@ -175,19 +188,20 @@ export function closeTab(state: WorkspaceTabs, id: string, owner?: string): Work
 
 /**
  * Brings back the workspace closed last, at its place, made active, as a browser's Ctrl+Shift+T. When only the blank
- * workspace that closing the last one left is there, the reopened one takes its place. Nothing to reopen: as it was.
+ * workspace that closing the last one left is there, the reopened one takes its place. Nothing to reopen: as it was. A
+ * preview comes back kept: asked back, it is wanted.
  */
 export function reopenTab(state: WorkspaceTabs): WorkspaceTabs {
   const last = state.closed?.at(-1);
   if (last === undefined) return state;
+  const { preview: _preview, ...back } = last.tab;
   const closed = (state.closed ?? []).slice(0, -1);
   const kept = closed.length > 0 ? { closed } : {};
   const only = state.tabs.length === 1 ? state.tabs[0] : undefined;
-  if (only !== undefined && isBlankTab(only))
-    return { tabs: [last.tab], active: last.tab.id, ...kept };
+  if (only !== undefined && isBlankTab(only)) return { tabs: [back], active: back.id, ...kept };
   const tabs = [...state.tabs];
-  tabs.splice(Math.min(last.index, tabs.length), 0, last.tab);
-  return { tabs, active: last.tab.id, ...kept };
+  tabs.splice(Math.min(last.index, tabs.length), 0, back);
+  return { tabs, active: back.id, ...kept };
 }
 
 /** The tab at `index` (from 0), as a browser's Ctrl+1…8; `last` for Ctrl+9. Past the end: as it was. */
@@ -252,24 +266,96 @@ export function activateTab(state: WorkspaceTabs, id: string): WorkspaceTabs {
   return indexOf(state, id) < 0 ? state : { ...state, active: id };
 }
 
-/** Names a tab; an empty name goes back to its first chat's title. */
+/** Names a tab; an empty name goes back to its first chat's title. A name given keeps a preview (`keepTab`). */
 export function renameTab(state: WorkspaceTabs, id: string, title: string): WorkspaceTabs {
   const name = title.trim();
-  return {
+  const named = {
     ...state,
     tabs: state.tabs.map((tab) =>
       tab.id === id ? { ...tab, title: name === "" ? null : name } : tab,
     ),
   };
+  return name === "" ? named : keepTab(named, id);
 }
 
+/** Keeps a tab's windows as dockview writes them. A second window keeps a preview (`keepTab`). */
 export function saveLayout(
   state: WorkspaceTabs,
   id: string,
   layout: SerializedDockview,
 ): WorkspaceTabs {
-  return {
+  const saved = {
     ...state,
     tabs: state.tabs.map((tab) => (tab.id === id ? { ...tab, layout } : tab)),
   };
+  return windowsIn(layout.grid?.root) > 1 ? keepTab(saved, id) : saved;
+}
+
+/** A preview stops being one: the next chat opened no longer takes its place. As it was when it is none. */
+export function keepTab(state: WorkspaceTabs, id: string): WorkspaceTabs {
+  if (state.tabs.find((tab) => tab.id === id)?.preview !== true) return state;
+  return {
+    ...state,
+    tabs: state.tabs.map((tab) => {
+      if (tab.id !== id) return tab;
+      const { preview: _preview, ...kept } = tab;
+      return kept;
+    }),
+  };
+}
+
+/** Pins a tab, which also keeps a preview, or unpins it. */
+export function pinTab(state: WorkspaceTabs, id: string, pinned: boolean): WorkspaceTabs {
+  const kept = pinned ? keepTab(state, id) : state;
+  return {
+    ...kept,
+    tabs: kept.tabs.map((tab) => {
+      if (tab.id !== id) return tab;
+      const { pinned: _pinned, ...rest } = tab;
+      return pinned ? { ...rest, pinned: true } : rest;
+    }),
+  };
+}
+
+/** The preview workspace, if one is open. */
+export const previewTab = (state: WorkspaceTabs): WorkspaceTab | undefined =>
+  state.tabs.find((tab) => tab.preview === true);
+
+/**
+ * Stamps when tabs were last in front: `ids` now, and every tab never stamped (kept before stamping began, or opened
+ * behind), so that one counts from now and none closes at once. As it was when nothing changes.
+ */
+export function touchTabs(
+  state: WorkspaceTabs,
+  ids: readonly string[],
+  now: number,
+): WorkspaceTabs {
+  const touch = (tab: WorkspaceTab): boolean => ids.includes(tab.id) || tab.usedAt === undefined;
+  if (!state.tabs.some(touch)) return state;
+  return {
+    ...state,
+    tabs: state.tabs.map((tab) => (touch(tab) ? { ...tab, usedAt: now } : tab)),
+  };
+}
+
+/**
+ * The tabs to close for not being used for longer than `limit` ms: never the one in front, a pinned one, one never
+ * stamped, nor one `busy` says to keep (its chat works or waits for you, or it was just opened).
+ */
+export function idleTabs(
+  state: WorkspaceTabs,
+  now: number,
+  limit: number,
+  busy: (id: string) => boolean,
+): readonly string[] {
+  return state.tabs
+    .filter(
+      (tab) =>
+        tab.id !== state.active &&
+        tab.pinned !== true &&
+        tab.usedAt !== undefined &&
+        now - tab.usedAt > limit &&
+        !busy(tab.id),
+    )
+    .map((tab) => tab.id);
 }

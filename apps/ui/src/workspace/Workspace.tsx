@@ -64,6 +64,7 @@ import {
 } from "./ChatPanel";
 import { chatCache } from "./chatCache";
 import { carriesChat, droppedChat } from "./chatDrag";
+import { useCloseAfter } from "./closeIdle";
 import { DropGuides } from "./DropGuides";
 import { keepDividerDragsFromSelecting } from "./dividers";
 import { regionResolver } from "./dropRegions";
@@ -77,17 +78,22 @@ import {
   blankTab,
   closeTab,
   goToTab,
+  idleTabs,
   insertTab,
+  keepTab,
   layoutStorage,
   loadTabs,
   moveTab,
   moveTabTo,
   nameAfterChat,
+  pinTab,
+  previewTab,
   renameTab,
   reopenTab,
   saveLayout,
   stepTab,
   TABS_KEY,
+  touchTabs,
   type WorkspaceTab,
   type WorkspaceTabs,
 } from "./tabs";
@@ -336,6 +342,73 @@ export function Workspace({
   }, []);
 
   useEffect(() => layoutStorage().setItem(TABS_KEY, JSON.stringify(tabs)), [tabs]);
+
+  // When each workspace was last in front: the one leaving the front and the one coming to it, now.
+  const shownBefore = useRef<string | null>(null);
+  useEffect(() => {
+    const before = shownBefore.current;
+    shownBefore.current = tabs.active;
+    const ids = before === null || before === tabs.active ? [tabs.active] : [before, tabs.active];
+    setTabs((state) => touchTabs(state, ids, Date.now()));
+  }, [tabs.active]);
+
+  /**
+   * Workspaces not in front for longer than Settings → App → Workspaces says close by themselves (`idleTabs`), as with
+   * ×, kept for Reopen; their new chats' text stays. Checked a little after the page opens (its chats tell whether they
+   * work by then), every 5 minutes, and when the page comes back to the front. Kept: one whose chat works or waits for
+   * you, one just opened.
+   */
+  const closeAfter = useCloseAfter();
+  useEffect(() => {
+    if (closeAfter === null) return;
+    const limit = closeAfter * 3_600_000;
+    const busy = (id: string): boolean =>
+      pendingChats.current.has(id) ||
+      pendingDashboards.current.has(id) ||
+      (apis.current.get(id)?.panels.some((panel) => {
+        const chat = controllers.get(panel.id)?.store.getSnapshot();
+        return chat !== undefined && (chat.working || chat.requests.length > 0);
+      }) ??
+        false);
+    const sweep = (): void => {
+      const now = Date.now();
+      const idle = idleTabs(touchTabs(tabsRef.current, [], now), now, limit, busy);
+      const layouts = new Map<string, SerializedDockview>();
+      for (const id of idle) {
+        const api = apis.current.get(id);
+        if (api !== undefined) layouts.set(id, keptLayout(api.toJSON(), phoneRef.current));
+        apis.current.delete(id);
+        owners.current.delete(id);
+      }
+      setTabs((state) =>
+        idle.reduce(
+          (next, id) => {
+            const layout = layouts.get(id);
+            return closeTab(layout === undefined ? next : saveLayout(next, id, layout), id);
+          },
+          touchTabs(state, [], now),
+        ),
+      );
+    };
+    const first = setTimeout(sweep, 10_000);
+    const every = setInterval(sweep, 5 * 60_000);
+    const back = (): void => {
+      if (document.visibilityState === "visible") sweep();
+    };
+    document.addEventListener("visibilitychange", back);
+    return () => {
+      clearTimeout(first);
+      clearInterval(every);
+      document.removeEventListener("visibilitychange", back);
+    };
+  }, [closeAfter, controllers]);
+
+  /** Typing in the workspace in front keeps it, when it is a preview: the next chat opened no longer takes its place. */
+  const keepShown = useCallback(() => {
+    const state = tabsRef.current;
+    if (state.tabs.find((tab) => tab.id === state.active)?.preview === true)
+      setTabs((now) => keepTab(now, now.active));
+  }, []);
 
   /** Tells the sidebar what is open, focused and waiting, and names each workspace after its first chat. */
   const report = useCallback(() => {
@@ -777,15 +850,27 @@ export function Workspace({
   /**
    * A chat in a workspace of its own, right after the shown one (#2831): in front, or behind it, where several opened
    * from the same workspace line up in the order opened, as a browser's tabs opened from one page. Its blank window
-   * takes the chat once its dockview is ready (`ready`).
+   * takes the chat once its dockview is ready (`ready`). A chat of the list opened in front opens as a preview (VS Code's
+   * preview tab): it takes the place of the preview open, which goes (kept for Reopen), until you keep it (`keepTab`).
    */
   const openInWorkspace = useCallback(
     (target: ChatTarget, behind: boolean) => {
-      const tab = blankTab();
+      const preview = !behind && target.kind === "existing";
+      const tab: WorkspaceTab = preview ? { ...blankTab(), preview: true } : blankTab();
       pendingChats.current.set(tab.id, target);
       if (!behind) {
         behindChain.current = null;
-        openInFront(tab);
+        const old = preview ? previewTab(tabsRef.current) : undefined;
+        if (old === undefined) {
+          openInFront(tab);
+          return;
+        }
+        // In the old preview's place when it is the one shown; closing the new one goes back where the old one would.
+        const from = tabsRef.current.active;
+        const back = from === old.id ? owners.current.get(old.id) : from;
+        if (back !== undefined) owners.current.set(tab.id, back);
+        setTabs((state) => insertTab(state, tab, state.active, true));
+        closeTabAsked(old.id);
         return;
       }
       const from = tabsRef.current.active;
@@ -794,7 +879,7 @@ export function Workspace({
       behindChain.current = { from, last: tab.id };
       setTabs((state) => insertTab(state, tab, after, false));
     },
-    [openInFront],
+    [openInFront, closeTabAsked],
   );
 
   /**
@@ -1074,6 +1159,12 @@ export function Workspace({
     report();
   }, [tabs.active, phone, allowFront, focusPane, report, syncHeaders, zoomForPhone]);
 
+  // A workspace closed (with ×, or by itself for not being used) that was not in front: its chats are no longer open,
+  // which the list hears only from here; no window event comes for a whole workspace going.
+  const tabIds = tabs.tabs.map((tab) => tab.id).join(" ");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the workspaces open are what changes the report
+  useEffect(() => report(), [tabIds, report]);
+
   // Leaving the phone layout (a tablet turned, a window made wider) opens every pane that waited.
   useEffect(() => openGate.setEveryPane(!phone), [openGate, phone]);
 
@@ -1214,6 +1305,7 @@ export function Workspace({
     rename: (id, title) => setTabs((state) => renameTab(state, id, title)),
     renaming: setRenaming,
     move: (id, to) => setTabs((state) => moveTabTo(state, id, to)),
+    pin: (id, pinned) => setTabs((state) => pinTab(state, id, pinned)),
     add: commands.newTab,
   };
   // The chat list shows the workspaces while it is open (Zen's way); it reads them here.
@@ -1243,7 +1335,8 @@ export function Workspace({
                 leading={stripLeading}
               />
             )}
-            <div className="relative min-h-0 flex-1">
+            {/* Typing anywhere in the workspace in front keeps it when it is a preview. */}
+            <div className="relative min-h-0 flex-1" onInput={keepShown}>
               {tabs.tabs.map((tab) => (
                 <div
                   key={tab.id}

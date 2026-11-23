@@ -3554,11 +3554,34 @@ const WORKSPACES_LIST_TOUR: Tour = {
   ],
 };
 
+/** Fewer workspaces (V256): previews, idle ones closing by themselves, pins. */
+const WORKSPACE_TIDY_TOUR: Tour = {
+  id: "workspace-tidy-2026-11-23",
+  title: "Fewer workspaces",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: TABS,
+      title: "Previews and pins",
+      text: "A chat clicked open from the list is a preview, its name in italics: the next one you open takes its place, until you type in it. A workspace you have not had in front for 12 hours closes by itself (Ctrl+Shift+T brings it back), unless you pin it with the pin on its row.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-23-workspace-tidy",
+    when: "2026-11-24T01:00:00Z",
+    summary:
+      "Fewer workspaces: a chat clicked open from the list is a preview, which the next one takes the place of until you type in it, and a workspace not used for 12 hours closes by itself unless pinned. Settings → App → Workspaces sets how long, or Never.",
+    tours: [WORKSPACE_TIDY_TOUR],
+  },
   {
     id: "2026-11-23-workspaces-list",
     when: "2026-11-23T20:30:00Z",
