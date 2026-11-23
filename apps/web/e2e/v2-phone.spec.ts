@@ -199,6 +199,33 @@ realTest.describe("new UI on a phone", () => {
   });
 
   realTest(
+    "in every style ＋, ⚡ and Send are a finger's 44 pt, the box stays 52 pt, and a long model name stays on one line",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      for (const style of ["tern", "paper", "console", "blocks", "glass", "roomy"]) {
+        await page.evaluate((value) => localStorage.setItem("omp-app.ui.style", value), style);
+        await page.reload();
+        await expect(box(page)).toHaveAttribute("placeholder", ready, { timeout: 120_000 });
+        // A style's spacing made them 11 of its steps: 53 pt in Roomy, which squeezed the text and grew the box.
+        const form = page.locator("[data-tour='message-box']");
+        for (const name of ["More", "Quick prompts", "Send"]) {
+          const key = await form.getByRole("button", { name, exact: true }).boundingBox();
+          expect([style, name, key?.width, key?.height]).toEqual([style, name, 44, 44]);
+        }
+        expect((await form.boundingBox())?.height).toBe(52);
+        // His model's name: it wrapped to a second line that the box cut.
+        await box(page).evaluate((area) =>
+          area.setAttribute("placeholder", "Claude Opus 5.5 · high"),
+        );
+        const lines = await box(page).evaluate((area) => [area.scrollHeight, area.clientHeight]);
+        expect([style, ...lines]).toEqual([style, lines[1], lines[1]]);
+      }
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest(
     "⚡ sits beside Send, and a tap on the box brings nothing up between it and the keyboard",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);

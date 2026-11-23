@@ -56,6 +56,7 @@ import { ModelPicker } from "./ModelPicker";
 import { expandMentions, shortenMentions } from "./mentionLabels";
 import { PausedRow } from "./PausedRow";
 import { PlusMenu } from "./PlusMenu";
+import { PHONE_BOX_KEY } from "./phoneBoxKey";
 import { QueuedMessages } from "./QueuedMessages";
 import { QueueLater } from "./QueueLater";
 import { QuickPanel } from "./QuickPanel";
@@ -974,7 +975,7 @@ export const Composer = memo(function Composer({
               type="button"
               variant="secondary"
               size={phone ? "icon" : "icon-sm"}
-              className={phone ? "size-11 shrink-0" : "tablet:size-11"}
+              className={phone ? PHONE_BOX_KEY : "tablet:size-11"}
               aria-label="Stop"
               data-tour="send-button"
               onClick={stop}
@@ -993,7 +994,7 @@ export const Composer = memo(function Composer({
               type="submit"
               variant={working ? "outline" : "default"}
               size={phone ? "icon" : "icon-sm"}
-              className={`${phone ? "size-11 shrink-0" : "tablet:size-11"}${working ? " text-accent-ink" : ""}`}
+              className={`${phone ? PHONE_BOX_KEY : "tablet:size-11"}${working ? " text-accent-ink" : ""}`}
               aria-label={working ? "Queue" : "Send"}
               data-tour="send-button"
               // While the chat opens, Send waits for it ("Sends once the chat is open"), as Enter does: a phone has
@@ -1064,7 +1065,8 @@ export const Composer = memo(function Composer({
         <ExtensionWidgets widgets={widgets} placement="aboveEditor" />
         <form
           data-tour="message-box"
-          className={`composer-box relative rounded-xl border bg-card ${dragging ? "border-primary" : "border-l2 focus-within:border-l4"}`}
+          // `--box-r`: the box's radius, which a style sets (looks.css) and a phone's keys follow (`PHONE_BOX_KEY`).
+          className={`composer-box relative rounded-[var(--box-r)] border bg-card [--box-r:var(--r-card)] ${dragging ? "border-primary" : "border-l2 focus-within:border-l4"}`}
           onSubmit={(event) => {
             event.preventDefault();
             send("auto");
@@ -1199,8 +1201,10 @@ export const Composer = memo(function Composer({
             <textarea
               ref={boxRef}
               // Six lines at most on a phone, twelve on a computer, each plus its padding: a full box shows whole lines.
-              // A computer's also leaves its buttons in a short window (35% of it at most).
-              className={`block w-full resize-none bg-transparent text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${phone ? `max-h-[calc(6lh_+_22px)] min-h-[1lh] min-w-0 px-2 py-[11px] text-[length:var(--host-text-size,1rem)] leading-snug placeholder:truncate${tall ? " order-first basis-full" : ""}` : "max-h-[min(calc(12lh_+_1rem),35dvh)] min-h-[2lh] px-3.5 pt-3 pb-1 text-[length:var(--host-text-size,0.875rem)] leading-normal"}`}
+              // A computer's also leaves its buttons in a short window (35% of it at most). A phone's empty box keeps
+              // its placeholder (the model's name) on one line: WebKit ignores `white-space` on `::placeholder`, so a
+              // long name wrapped and was cut by the box; it takes the box's own `placeholder-shown` instead.
+              className={`block w-full resize-none bg-transparent text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${phone ? `max-h-[calc(6lh_+_22px)] min-h-[1lh] min-w-0 px-2 py-[11px] text-[length:var(--host-text-size,1rem)] leading-snug placeholder:truncate placeholder-shown:truncate${tall ? " order-first basis-full" : ""}` : "max-h-[min(calc(12lh_+_1rem),35dvh)] min-h-[2lh] px-3.5 pt-3 pb-1 text-[length:var(--host-text-size,0.875rem)] leading-normal"}`}
               aria-label="Message"
               placeholder={
                 closed

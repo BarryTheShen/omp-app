@@ -2,6 +2,7 @@ import { KeyRound, Paperclip, Pause, Play, Plus, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { PHONE_BOX_KEY } from "./phoneBoxKey";
 
 /** A row of the ＋ sheet: a finger's 44 pt, its icon and words from the left. */
 export const SHEET_ROW = "h-11 w-full justify-start gap-3 px-3 text-base text-t1";
@@ -56,7 +57,7 @@ export function PlusMenu({
             type="button"
             variant="ghost"
             size="icon"
-            className="size-11 shrink-0 text-t2"
+            className={`${PHONE_BOX_KEY} text-t2`}
             aria-label="More"
             data-tour="plus"
           />

@@ -1,6 +1,7 @@
 import { Keyboard, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { PHONE_BOX_KEY } from "./phoneBoxKey";
 
 /**
  * The quick prompts' key, beside Send in the phone's box (#2837): ⚡ puts the quick panel in the keyboard's place, ⌨ in
@@ -20,7 +21,7 @@ export function QuickPromptsKey({
       type="button"
       variant="ghost"
       size="icon"
-      className="size-11 shrink-0 text-t2"
+      className={`${PHONE_BOX_KEY} text-t2`}
       aria-label={open ? "Keyboard" : "Quick prompts"}
       aria-expanded={open}
       onClick={onPress}
