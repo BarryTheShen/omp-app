@@ -109,7 +109,8 @@ realTest.describe("new UI in the desktop window", () => {
       expect(await calls()).toEqual([]);
       // Nothing at all: the window is asked for copied files first, then for a picture (#2833).
       await paste("");
-      await expect(page.getByRole("button", { name: "Remove Pasted image 1.png" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Remove Image 1" })).toBeVisible();
+      await expect(box).toHaveValue(/^\[Image #1(, \d+x\d+)?\] $/);
       expect(await calls()).toEqual(["list_clipboard_files", "read_clipboard_png"]);
       expect(realApp.problems).toEqual([]);
     },

@@ -376,6 +376,23 @@
   padding-inline: 4px;
 }
 
+/* Your message's pictures: under your bubble, outside it, at the same edge; their own row of the column. */
+.tl-item .tr-row--user > .tr-sent-imgs {
+  grid-column: 1 / -1;
+  justify-self: end;
+  justify-content: flex-end;
+  max-width: min(85%, 600px);
+}
+
+/* Styles whose turn sits at the left (Paper, Console, Blocks) keep the pictures there too. */
+:root:is([data-style="paper"], [data-style="console"], [data-style="blocks"])
+  .tl-item
+  .tr-row--user
+  > .tr-sent-imgs {
+  justify-self: start;
+  justify-content: flex-start;
+}
+
 .tl-item .tr-context {
   font-size: calc(var(--host-text-size, 14px) * 12 / 14);
   color: var(--t3);

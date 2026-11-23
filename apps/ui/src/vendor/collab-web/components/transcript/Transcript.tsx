@@ -59,6 +59,7 @@ export function Row({
 	gutter,
 	title,
 	above,
+	below,
 	children,
 }: {
 	kind: "user" | "assistant" | "custom" | "marker";
@@ -66,6 +67,9 @@ export function Row({
 	title?: string;
 	/** omp-app: drawn over the body, outside it (a sent message's tag for what was open, as Notion tags its page). */
 	above?: ReactNode;
+	/** omp-app: drawn under the body, outside it (a sent message's pictures). */
+	below?: ReactNode;
+	/** The body; none (null) leaves the row without one, as a message of pictures alone. */
 	children: ReactNode;
 }): ReactNode {
 	return (
@@ -74,8 +78,32 @@ export function Row({
 			<div className="tr-gutter" title={title}>
 				{gutter}
 			</div>
-			<div className="tr-body">{children}</div>
+			{children !== null && <div className="tr-body">{children}</div>}
+			{below}
 		</div>
+	);
+}
+
+/**
+ * omp-app: a sent message's pictures, under its bubble and outside it, each named as the message's text names it
+ * (`[Image #N]`, omp's marker for its Nth picture), so "Image 2" in the text is the one captioned Image 2.
+ */
+function SentImages({ images }: { images: readonly ImageContent[] }): ReactNode {
+	return (
+		<ul className="tr-sent-imgs" aria-label="Pictures sent with the message">
+			{images.map((image, index) => (
+				<li key={index}>
+					<figure className="tr-sent-img">
+						<img
+							className="tr-msg-img"
+							src={`data:${image.mimeType};base64,${image.data}`}
+							alt={`Image ${index + 1}`}
+						/>
+						<figcaption>Image {index + 1}</figcaption>
+					</figure>
+				</li>
+			))}
+		</ul>
 	);
 }
 
@@ -444,6 +472,10 @@ export const EntryRow = memo(function EntryRow({ entry, results, active, host }:
 							</Row>
 						);
 					const { content, files, context, mentions } = withoutAdded(sent);
+					const images = typeof content === "string" ? [] : content.filter(block => block.type === "image");
+					const text =
+						typeof content === "string" ? content : content.filter(block => block.type !== "image");
+					const hasText = typeof text === "string" ? text.trim() !== "" : text.length > 0;
 					return (
 						<Row
 							kind="user"
@@ -454,9 +486,14 @@ export const EntryRow = memo(function EntryRow({ entry, results, active, host }:
 									<SentContext context={context} mentions={mentions} />
 								)
 							}
+							below={images.length > 0 ? <SentImages images={images} /> : undefined}
 						>
-							<MsgContent content={content} />
-							{files.length > 0 && <AttachedFiles files={files} host={host} />}
+							{hasText || files.length > 0 ? (
+								<>
+									<MsgContent content={text} />
+									{files.length > 0 && <AttachedFiles files={files} host={host} />}
+								</>
+							) : null}
 						</Row>
 					);
 				}

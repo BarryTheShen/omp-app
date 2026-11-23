@@ -6,6 +6,7 @@
  */
 import { splitAttached } from "./attached-files";
 import { splitHostContext } from "./host-context";
+import { withoutImageMarkers } from "./image-markers";
 import { withSecretNames } from "./secret-placeholder";
 
 const BLOCK_TAG = { open: "<attachment>", close: "</attachment>" } as const;
@@ -167,14 +168,15 @@ export function splitPastedBlocks(message: string): readonly MessageSegment[] {
  * the first line with words in the message's pasted texts, so a message that is only a pasted text lists that text and
  * never omp's wrapper; then the names of its attached files (`attached-files.ts`), whose paragraph is never listed. A
  * block that is not in exact form is typed text, as the transcript shows it. Empty when there is none of these. A
- * secret's placeholder (omp's Hide Secrets) reads as a lock and the secret's name, as in the transcript.
+ * secret's placeholder (omp's Hide Secrets) reads as a lock and the secret's name, as in the transcript; a picture's
+ * name (`[Image #1, 800x600]`) is left out.
  */
 export function firstPromptTextOf(message: string): string {
   const { text, files } = splitAttached(splitHostContext(message).text);
   const segments = splitPastedBlocks(text);
-  const typed = segments
-    .flatMap((segment) => (segment.kind === "text" ? [segment.text] : []))
-    .join(" ");
+  const typed = withoutImageMarkers(
+    segments.flatMap((segment) => (segment.kind === "text" ? [segment.text] : [])).join(" "),
+  );
   if (typed.trim().length > 0) return withSecretNames(typed);
   for (const segment of segments) {
     if (segment.kind !== "pasted") continue;

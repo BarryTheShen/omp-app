@@ -20,6 +20,23 @@ export interface Attachment {
   readonly name: string;
   readonly bytes: number;
   readonly image: ChatHostImage;
+  /** Its size in pixels, for its marker in the text (`[Image #N, WxH]`); absent when it could not be read. */
+  readonly size?: { readonly width: number; readonly height: number };
+}
+
+/** A picture's size in pixels, or undefined where the browser cannot decode it here. */
+async function pictureSize(
+  file: Blob,
+): Promise<{ readonly width: number; readonly height: number } | undefined> {
+  if (typeof createImageBitmap !== "function") return undefined;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const size = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return size;
+  } catch {
+    return undefined;
+  }
 }
 
 function toBase64(bytes: Uint8Array): string {
@@ -49,11 +66,13 @@ export async function readImages(
     }
     total += file.size;
     const data = toBase64(new Uint8Array(await file.arrayBuffer()));
+    const size = await pictureSize(file);
     added.push({
       id: crypto.randomUUID(),
       name: file.name === "" ? "image" : file.name,
       bytes: file.size,
       image: { type: "image", data, mimeType: file.type },
+      ...(size === undefined ? {} : { size }),
     });
   }
   return { added, others };

@@ -52,4 +52,12 @@ describe("firstPromptTextOf: the words a chat lists as its first prompt", () => 
       "use 🔒 secret here",
     );
   });
+
+  test("a picture's name (omp's `[Image #N, WxH]`) is not part of the title", () => {
+    expect(firstPromptTextOf("[Image #1, 800x600] Also could you customize it")).toBe(
+      "Also could you customize it",
+    );
+    expect(firstPromptTextOf("crop [Image #2] like [Image #1, 4x4]")).toBe("crop like");
+    expect(firstPromptTextOf("[Image #1, 1x1]")).toBe("");
+  });
 });

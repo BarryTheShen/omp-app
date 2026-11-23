@@ -79,7 +79,7 @@ realTest.describe("new UI edit and attachments", () => {
   );
 
   realTest(
-    "a pasted or dropped image goes with the message, any other file is uploaded with it, and Remove takes one out",
+    "a pasted or dropped image goes with the message named in its text as omp names it ([Image #N, WxH]), any other file is uploaded with it, Remove takes one out with its name, and the sent pictures sit under the message, captioned",
     async ({ realApp }) => {
       const page = await newChat(realApp);
       const box = page.getByRole("textbox", { name: "Message" });
@@ -94,9 +94,11 @@ realTest.describe("new UI edit and attachments", () => {
           new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }),
         );
       }, PIXEL);
-      // The picture goes with the message; the text file is uploaded to the chat's folder (#2830).
+      // The picture goes with the message, named at the caret as omp's terminal names a pasted one; the text file is
+      // uploaded to the chat's folder (#2830).
       await expect(attached.getByRole("listitem")).toHaveCount(2);
-      await expect(attached).toContainText("pixel.png");
+      await expect(attached).toContainText("Image 1");
+      await expect(box).toHaveValue("[Image #1, 1x1] ");
       await expect(attached.getByRole("listitem").filter({ hasText: "notes.txt" })).toContainText(
         "5 B",
         { timeout: 30_000 },
@@ -111,17 +113,22 @@ realTest.describe("new UI edit and attachments", () => {
         );
       }, PIXEL);
       await expect(attached.getByRole("listitem")).toHaveCount(3);
-      await page.getByRole("button", { name: "Remove dropped.png" }).click();
+      await expect(box).toHaveValue("[Image #1, 1x1] [Image #2, 1x1] ");
+      await page.getByRole("button", { name: "Remove Image 2" }).click();
       await expect(attached.getByRole("listitem")).toHaveCount(2);
-      await expect(attached).not.toContainText("dropped.png");
+      await expect(box).toHaveValue("[Image #1, 1x1] ");
 
-      await box.fill("what is in this picture");
+      await box.fill("what is in [Image #1, 1x1]");
       await box.press("Enter");
       const transcript = page.getByRole("region", { name: "Transcript" });
-      await expect(transcript.getByText("what is in this picture")).toBeVisible({
+      await expect(transcript.getByText("what is in [Image #1, 1x1]")).toBeVisible({
         timeout: 60_000,
       });
-      await expect(transcript.getByRole("img", { name: "attachment" })).toHaveCount(1);
+      // The picture is under the message, outside its bubble, with the number the text names it by.
+      const pictures = transcript.getByRole("list", { name: "Pictures sent with the message" });
+      await expect(pictures.getByRole("img", { name: "Image 1" })).toHaveCount(1);
+      await expect(pictures).toContainText("Image 1");
+      await expect(transcript.locator(".tr-body").getByRole("img")).toHaveCount(0);
       await expect(transcript.getByRole("button", { name: "Download notes.txt" })).toBeVisible();
       await expect(attached).toHaveCount(0);
 

@@ -50,6 +50,7 @@ import { ComposerMenu } from "./ComposerMenu";
 import { caretOnEdgeRow } from "./caretRow";
 import type { ChatController } from "./controller";
 import { ExtensionWidgets } from "./ExtensionWidgets";
+import { compactImageMarkers, imageMarker, renumberImageMarkers } from "./imageMarkers";
 import { ModelPicker } from "./ModelPicker";
 import { expandMentions, shortenMentions } from "./mentionLabels";
 import { PausedRow } from "./PausedRow";
@@ -329,14 +330,32 @@ export const Composer = memo(function Composer({
       void controller.removeAttachment(file.name).catch(() => undefined);
   };
 
-  /** Takes pasted, dropped or picked files: pictures go with the message, any other file is uploaded. */
+  /**
+   * Takes pasted, dropped or picked files: pictures go with the message, each named in the text at the caret by its
+   * marker (`[Image #N, WxH]`, as omp's terminal names a pasted picture), so it can be pointed at; any other file is
+   * uploaded.
+   */
   const addFiles = (picked: readonly File[]): void => {
     const already = attachmentsRef.current.reduce((sum, attachment) => sum + attachment.bytes, 0);
     setError(null);
     void readImages(picked, already).then(({ added, others }) => {
-      if (added.length > 0) attach([...attachmentsRef.current, ...added]);
+      if (added.length > 0) {
+        const first = attachmentsRef.current.length + 1;
+        attach([...attachmentsRef.current, ...added]);
+        const markers = added.map((picture, index) => imageMarker(first + index, picture.size));
+        const before = textRef.current.slice(0, boxRef.current?.selectionStart ?? 0);
+        insertRef.current(`${before === "" || /\s$/.test(before) ? "" : " "}${markers.join(" ")} `);
+      }
       for (const file of others) upload(file);
     });
+  };
+  /** Takes the `place`th picture out of the box, and its marker out of the text: the later ones move down by one. */
+  const removePicture = (place: number): void => {
+    attach(attachmentsRef.current.filter((_, index) => index !== place));
+    const gone = place + 1;
+    update(
+      renumberImageMarkers(textRef.current, (n) => (n === gone ? null : n > gone ? n - 1 : n)),
+    );
   };
   /** Pictures read from the desktop window's clipboard so far, which names the next one. */
   const windowPastes = useRef(0);
@@ -406,16 +425,6 @@ export const Composer = memo(function Composer({
     };
   }, [draft]);
 
-  /**
-   * Pictures of a message that came back to the box (Edit of a sent or a queued message, Stop's queue) join what it
-   * holds; a picture it holds already is not put in a second time.
-   */
-  const putBack = (images: readonly ChatHostImage[]): void => {
-    const held = new Set(attachmentsRef.current.map((attachment) => attachment.image.data));
-    const fresh = images.filter((image) => !held.has(image.data));
-    if (fresh.length > 0) attach([...attachmentsRef.current, ...fresh.map(asAttachment)]);
-  };
-
   /** Files a message names, back in the box as they are in the chat's folder: nothing is uploaded again. */
   const putBackFiles = (named: readonly SentFile[]): void => {
     const held = new Set(filesRef.current.map((file) => file.name));
@@ -442,17 +451,26 @@ export const Composer = memo(function Composer({
     messages: readonly { readonly text: string; readonly images?: readonly ChatHostImage[] }[],
   ): void => {
     // What was open in the app that embeds the panel goes again with the next message: only what was typed comes back.
-    const parts = messages
-      .filter((message) => splitAppNotice(message.text) === null)
-      .map((message) => splitAttached(splitHostContext(message.text).text));
-    update(
-      withRestored(
-        parts.map((part) => part.text),
-        textRef.current,
-      ),
-    );
-    putBack(messages.flatMap((message) => message.images ?? []));
-    putBackFiles(parts.flatMap((part) => part.files));
+    // Each message numbered its markers against its own pictures; in the box they follow where each picture lands
+    // (after the box's own, or where the box holds the same picture already).
+    const held = [...attachmentsRef.current];
+    const texts: string[] = [];
+    const files: SentFile[] = [];
+    for (const message of messages) {
+      if (splitAppNotice(message.text) !== null) continue;
+      const part = splitAttached(splitHostContext(message.text).text);
+      const places = (message.images ?? []).map((image) => {
+        const at = held.findIndex((attachment) => attachment.image.data === image.data);
+        if (at >= 0) return at + 1;
+        held.push(asAttachment(image, held.length));
+        return held.length;
+      });
+      texts.push(renumberImageMarkers(part.text, (n) => places[n - 1] ?? n));
+      files.push(...part.files);
+    }
+    update(withRestored(texts, textRef.current));
+    if (held.length > attachmentsRef.current.length) attach(held);
+    putBackFiles(files);
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: an edited message is put in once, when Edit brings it
@@ -486,8 +504,15 @@ export const Composer = memo(function Composer({
 
   const send = (mode: "auto" | "followUp"): void => {
     const sent = textRef.current;
-    const value = expandMentions(sent.trim(), mentionLinks.current);
-    const images = attachmentsRef.current;
+    const held = attachmentsRef.current;
+    // Only the pictures the text still names go, numbered 1..K as omp's terminal sends them (a text naming none sends
+    // them all).
+    const compacted = compactImageMarkers(
+      expandMentions(sent.trim(), mentionLinks.current),
+      held.length,
+    );
+    const value = compacted.text;
+    const images = compacted.keep.map((place) => held[place] as Attachment);
     const attachedFiles = filesRef.current;
     if ((value.length === 0 && images.length === 0 && attachedFiles.length === 0) || sending)
       return;
@@ -552,7 +577,7 @@ export const Composer = memo(function Composer({
         const now = textRef.current;
         update(now === sent ? "" : now.startsWith(sent) ? now.slice(sent.length).trimStart() : now);
         if (run === null) {
-          const gone = new Set(images.map((attachment) => attachment.id));
+          const gone = new Set(held.map((attachment) => attachment.id));
           attach(attachmentsRef.current.filter((attachment) => !gone.has(attachment.id)));
           const goneFiles = new Set(attachedFiles.map((file) => file.id));
           attachFiles(filesRef.current.filter((file) => !goneFiles.has(file.id)));
@@ -1057,9 +1082,10 @@ export const Composer = memo(function Composer({
               aria-label="Attachments"
               className="flex flex-wrap gap-2 px-3 pt-3 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-2 max-sm:pt-2 max-sm:[scrollbar-width:none] max-sm:[&::-webkit-scrollbar]:hidden"
             >
-              {attachments.map((attachment) => (
+              {attachments.map((attachment, place) => (
                 <li
                   key={attachment.id}
+                  title={attachment.name}
                   className="flex shrink-0 items-center gap-1.5 rounded-md border border-l2 bg-raise p-1 max-sm:py-0"
                 >
                   <img
@@ -1067,16 +1093,14 @@ export const Composer = memo(function Composer({
                     alt=""
                     className="size-7 rounded-sm object-cover"
                   />
-                  <span className="max-w-40 truncate text-xs text-t2">{attachment.name}</span>
+                  <span className="max-w-40 truncate text-xs text-t2">Image {place + 1}</span>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon-xs"
                     className="text-t3 hover:text-t1"
-                    aria-label={`Remove ${attachment.name}`}
-                    onClick={() =>
-                      attach(attachmentsRef.current.filter((kept) => kept.id !== attachment.id))
-                    }
+                    aria-label={`Remove Image ${place + 1}`}
+                    onClick={() => removePicture(place)}
                   >
                     <X />
                   </Button>

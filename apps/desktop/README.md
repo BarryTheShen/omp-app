@@ -93,4 +93,4 @@ These three need a person at a real desktop: the automated runs use a virtual di
    tr '\0' '\n' < /proc/$(pgrep -n omp-app-desktop)/environ | grep -E 'XMODIFIERS|GTK_IM|QT_IM|GDK_BACKEND'
    ```
 
-3. Copy a picture (a screenshot, for example), click New chat, click the message box, and press Ctrl+V. Expected: a chip named `Pasted image 1.png` appears above the box. The automated runs use X11, so on GNOME's Wayland session this is the check that counts.
+3. Copy a picture (a screenshot, for example), click New chat, click the message box, and press Ctrl+V. Expected: a chip named `Image 1` appears above the box, and the box reads `[Image #1, <width>x<height>]`. The automated runs use X11, so on GNOME's Wayland session this is the check that counts.

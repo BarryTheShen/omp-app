@@ -910,7 +910,7 @@ realTest.describe("new UI on a phone", () => {
         { name: "report.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4 test") },
       ]);
       const attached = page.getByRole("list", { name: "Attachments" });
-      await expect(attached.getByText("photo.png")).toBeVisible();
+      await expect(attached.getByText("Image 1")).toBeVisible();
       // The PDF is uploaded to the chat's folder: its chip shows its size once it is up.
       await expect(attached.getByRole("listitem").filter({ hasText: "report.pdf" })).toContainText(
         "13 B",

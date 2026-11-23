@@ -141,6 +141,35 @@
 	border-radius: var(--radius-sm);
 }
 
+/*
+ * omp-app: a sent message's pictures, under its card and outside it, each with its number as the text names it
+ * ([Image #N]). In the body's column, at the card's edge.
+ */
+.tr-sent-imgs {
+	grid-column: 2 / -1;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	min-width: 0;
+	max-width: 100%;
+	margin: 6px 0 0;
+	padding: 0;
+	list-style: none;
+}
+
+.tr-sent-img {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	margin: 0;
+	min-width: 0;
+}
+
+.tr-sent-img figcaption {
+	font-size: 11.5px;
+	color: var(--fg-muted);
+}
+
 /* omp-app: a sent message's files (#2830), one chip each; a chip downloads its file. */
 .tr-files {
 	/* As wide as the message, not as its longest name: a long name ends in an ellipsis inside the bubble. */
