@@ -68,7 +68,10 @@ test("omp-app relay pairs once with a code, carries the browser's extension to t
     { name: "Browser relay on test", kind: "browser-relay" },
   ]);
   expect(Object.keys(JSON.parse(await readFile(keysFile, "utf8")))).toEqual([app.url]);
-  expect((await Bun.file(keysFile).stat()).mode & 0o777).toBe(0o600);
+  // Unix modes only: Windows keeps it in the account's own profile folder instead.
+  if (process.platform !== "win32") {
+    expect((await Bun.file(keysFile).stat()).mode & 0o777).toBe(0o600);
+  }
 
   // A web page cannot use it: only a browser extension's socket is carried.
   const page = await fetch(`http://127.0.0.1:${carrier.port}/ext`, {

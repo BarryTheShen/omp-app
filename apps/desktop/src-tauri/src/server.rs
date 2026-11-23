@@ -572,8 +572,7 @@ fn local_origin(app: &AppHandle) -> Option<String> {
 }
 
 /// The origin of the server window `label` shows: another computer's, or this computer's own; None before one opened.
-/// Agent access asks it (`access.rs`, Linux's alone).
-#[cfg(target_os = "linux")]
+/// Agent access (`access.rs`, Linux's alone) and the browser relay (`relay.rs`) ask it.
 pub fn window_origin(app: &AppHandle, label: &str) -> Option<String> {
     remote_origin_of(app, label).or_else(|| local_origin(app))
 }
