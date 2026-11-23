@@ -43,8 +43,9 @@ export const BrowserStatus = z
       })
       .strict(),
     /**
-     * The user's own browser (Edge on the laptop), through omp's relay run by the app while chosen: its relay extension
-     * connects to 127.0.0.1:9224 on the laptop, which `link` carries to the server.
+     * The user's own browser, through omp's relay run by the app while chosen: its relay extension connects to
+     * 127.0.0.1:9224 on the browser's computer, where a carrier (`omp-app relay`, or the desktop app) brings the
+     * connection to the app's server as a paired device.
      */
     edge: z
       .object({
@@ -55,8 +56,13 @@ export const BrowserStatus = z
         browser: z.string().nullable(),
         tabs: z.array(EdgeTab),
         problem: z.string().nullable(),
-        /** The command that links the laptop's 127.0.0.1:9224 to the server. */
-        link: z.string(),
+        /** A carrier is connected from the browser's computer. */
+        carried: z.boolean(),
+        /**
+         * The token omp's relay extension gives in its options when it runs on the app's own computer (no carrier
+         * there); null while the relay running is not the app's.
+         */
+        extensionToken: z.string().nullable(),
       })
       .strict(),
   })

@@ -5,7 +5,7 @@
  * the .deb; from a source checkout, run `bun run build && bun packages/server/scripts/omp-app.ts`.
  */
 import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { AppFailure, DeviceList, PAIRING_PATHS, PairingCode } from "@omp-app/contracts";
 import { probeOmp } from "../src/capabilities/omp-version";
@@ -38,6 +38,7 @@ import {
   USAGE,
 } from "../src/launcher/launcher";
 import { runMaintenance } from "../src/launcher/maintenance-cli";
+import { startRelayCarrier } from "../src/launcher/relay-carrier";
 import { readSecretValue, runSecretCommand } from "../src/launcher/secrets-cli";
 import {
   TUI_SETTINGS,
@@ -306,6 +307,32 @@ if (args.command === "debug-report") {
     { mode: 0o600 },
   );
   console.log(`Wrote ${target}\n\nAttach this file to your GitHub issue.`);
+  process.exit(0);
+}
+if (args.command === "relay" && args.relay !== undefined) {
+  const relay = args.relay;
+  const carrier = await startRelayCarrier({
+    server: relay.server,
+    port: relay.port,
+    keysFile: join(logDir, "relay-keys.json"),
+    name: `Browser relay on ${hostname()}`.slice(0, 60),
+    code: relay.code,
+    askCode: async () => {
+      process.stdout.write(
+        `A one-time code from the app at ${relay.server} (Settings → App → Devices → Pair a new device, or omp-app pair on its computer): `,
+      );
+      for await (const line of console) return line;
+      return "";
+    },
+    say: (line) => console.log(line),
+  });
+  if (typeof carrier === "string") fail(carrier);
+  console.log(
+    `Carrying your browser's relay extension to ${relay.server}: it connects to 127.0.0.1:${carrier.port} here. Keep this running while chats use your browser; Ctrl+C stops it.`,
+  );
+  for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => carrier.stop());
+  const why = await carrier.done;
+  if (why !== "stopped") fail(why);
   process.exit(0);
 }
 if (args.command === "pair" || args.command === "devices") {

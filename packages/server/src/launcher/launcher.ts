@@ -19,6 +19,7 @@ export const USAGE = `Usage: omp-app [folder] [options]
        omp-app tui [folder] [-- omp's options]
        omp-app pair
        omp-app devices [remove <device>]
+       omp-app relay <app address> [--code <code>] [--port <n>]
        omp-app secret [add <name> | remove <name>]
        omp-app logs [--lines <n>]
        omp-app debug-report
@@ -44,6 +45,15 @@ Each device that opens the app pairs once, and stays paired until it is removed:
                  a new one, or make a code in Settings → App → Devices.
   devices        list the paired devices; devices remove <device> removes one, by its id (or the
                  start of it) or its name: its key stops working and its open windows close
+
+Your own browser for the app's chats, from the computer it runs on (Browser panel → Your own
+browser, with omp's relay extension in that browser):
+  relay <app address>
+                 carry the relay extension's connection to the app at that address (its https
+                 address, or http://127.0.0.1:<port> on the same computer): listens on this
+                 computer's 127.0.0.1:9224 (--port sets another) while it runs. The first time it
+                 pairs as a device with a one-time code (--code, or it asks); the desktop app runs
+                 it by itself.
 
 The app's link (the address with #token=) opens it on this computer only, and stays the same when
 the app restarts. Every other device pairs.
@@ -93,7 +103,8 @@ export type LauncherArgs = {
     | "logs"
     | "debug-report"
     | "maintenance"
-    | "device-ssh";
+    | "device-ssh"
+    | "relay";
   readonly folder: string | undefined;
   readonly port: number | undefined;
   readonly open: boolean;
@@ -109,7 +120,19 @@ export type LauncherArgs = {
   readonly maintenance?: MaintenanceCommand;
   /** For `device-ssh <alias>`: the machine an agent's ssh reaches through the app (#20). */
   readonly accessAlias?: string;
+  /** For `relay <address>`: the app to carry the relay extension's connection to, and how. */
+  readonly relay?: RelayCommand;
 };
+
+/** `omp-app relay <address> [--code <code>] [--port <n>]`. */
+export interface RelayCommand {
+  /** The app's address, as an origin: `https://…`, or `http://127.0.0.1:<port>` / `http://localhost:<port>`. */
+  readonly server: string;
+  /** A one-time pairing code; without one, a carrier not paired yet asks for it. */
+  readonly code: string | undefined;
+  /** The port omp's relay extension connects to on this computer. */
+  readonly port: number;
+}
 
 export type ParsedArgs =
   | { readonly ok: true; readonly args: LauncherArgs }
@@ -142,6 +165,7 @@ export function parseLauncherArgs(argv: readonly string[]): ParsedArgs {
       ? { ok: true, args: { ...NO_ARGS, command: "devices", removeDevice: device } }
       : { ok: false, message: "Use omp-app devices, or omp-app devices remove <device>." };
   }
+  if (argv[0] === "relay") return parseRelay(argv.slice(1));
   if (argv[0] === "maintenance") {
     const parsed = parseMaintenance(argv.slice(1));
     return parsed.ok
@@ -233,6 +257,59 @@ const NO_ARGS: Omit<LauncherArgs, "command"> = {
   ompArgs: [],
   removeDevice: undefined,
 };
+
+/** The relay extension's port unless its options say another (omp's `DEFAULT_RELAY_URL`). */
+const RELAY_PORT = 9224;
+
+function parseRelay(argv: readonly string[]): ParsedArgs {
+  const usage = "Use omp-app relay <app address> [--code <code>] [--port <n>].";
+  let server: string | undefined;
+  let code: string | undefined;
+  let port = RELAY_PORT;
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index] ?? "";
+    if (arg === "--code" || arg === "--port") {
+      const value = argv[index + 1] ?? "";
+      index += 1;
+      if (arg === "--code") {
+        if (!/^[A-Za-z0-9-]{1,20}$/.test(value))
+          return { ok: false, message: `--code needs the one-time code, not "${value}".` };
+        code = value;
+      } else {
+        const parsed = parsePort(value);
+        if (parsed === undefined || parsed === 0)
+          return { ok: false, message: `--port needs a number from 1 to 65535, not "${value}".` };
+        port = parsed;
+      }
+    } else if (server === undefined && !arg.startsWith("-")) server = arg;
+    else return { ok: false, message: usage };
+  }
+  const origin = server === undefined ? null : relayServerOrigin(server);
+  if (origin === null) {
+    return {
+      ok: false,
+      message: `${usage} The address is the app's https address, or http://127.0.0.1:<port> on the same computer.`,
+    };
+  }
+  return {
+    ok: true,
+    args: { ...NO_ARGS, command: "relay", relay: { server: origin, code, port } },
+  };
+}
+
+/** The app's address as an origin a carrier may use: https anywhere, plain http only to this computer. */
+export function relayServerOrigin(address: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(address);
+  } catch {
+    return null;
+  }
+  if (url.protocol === "https:") return url.origin;
+  const loopback =
+    url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]";
+  return url.protocol === "http:" && loopback ? url.origin : null;
+}
 
 const InstanceSchema = z.object({
   pid: z.number().int().positive(),

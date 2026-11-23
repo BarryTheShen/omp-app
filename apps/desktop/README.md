@@ -10,6 +10,8 @@ The server the window starts uses port 4317, the port of the `omp-app` command a
 
 A file the web app downloads (an attachment from a chat, a file from the Files panel, or the debug log from **Save debug log**, for example) is saved into your Downloads folder: the one set in `~/.config/user-dirs.dirs`, or `~/Downloads` when that setting is missing (the folder is created if it does not exist). It does not save into the folder the window was started from. In a terminal, `omp-app logs` and `omp-app debug-report` read the debug log too (see the main README).
 
+A window showing a server on another computer can bring this computer's browser to that server's chats: Browser panel → Your own browser → **Use this computer's browser**. The window then runs its server program's `relay` command (`omp-app relay <the server's address>`, `src/relay.rs`), paired as the device "Browser relay on <computer>", which carries omp's relay extension's connection (127.0.0.1:9224 here) to the server over its own address. It starts again with the window while that stays chosen (`~/.config/omp-app/browser-relay` names the server), and stops with the app.
+
 The window bundles the omp coding agent: every chat and every omp command runs omp's own command line, which the app builds from the omp package it pins and the package holds compiled (`/usr/lib/omp-app-desktop/chat-host`), never an omp installed on this computer. There is nothing to install.
 
 The package is `omp-app-desktop` and its menu entry is "omp app". It does not replace or touch the `omp-app` command package.

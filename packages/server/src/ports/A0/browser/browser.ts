@@ -35,8 +35,6 @@ export interface BrowserPortContext {
   readonly browser: ServerBrowser | null;
   /** omp's relay for the user's own browser. */
   readonly edge: RelayHost;
-  /** The command that links the laptop's relay port to this machine. */
-  readonly edgeLink: string;
   readonly edgeChoice: EdgeChoiceStore;
   readonly settings: BrowserSettings;
   /** Publishes an event into the replay hub. */
@@ -104,7 +102,7 @@ export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntim
         tabs: [...(browser?.tabs() ?? [])],
         front: browser?.front() ?? null,
       },
-      edge: { ...relay, tabs: [...relay.tabs], link: context.edgeLink },
+      edge: { ...relay, tabs: [...relay.tabs], extensionToken: edge.extensionToken() },
     };
   };
   const needBrowser = (): ServerBrowser => {

@@ -33,6 +33,7 @@ function relay() {
     browser: null,
     tabs: [],
     problem: null,
+    carried: false,
   });
   const host: RelayHost = {
     ensure: async () => {
@@ -46,6 +47,8 @@ function relay() {
     },
     refresh: async () => state(),
     state,
+    carry: () => "not in these tests",
+    extensionToken: () => null,
   };
   return { did, host };
 }
@@ -74,7 +77,6 @@ function runtimeOver(
   const runtime = createBrowserRuntime({
     browser: null,
     edge,
-    edgeLink: "ssh -N -L 9224:127.0.0.1:9224 user@server",
     edgeChoice,
     settings,
     publish: () => undefined,

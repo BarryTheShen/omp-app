@@ -37,6 +37,10 @@ fn main() {
             "access_share_folder",
             // Settings → App → omp-app → Update this app (update.rs).
             "update_desktop_app",
+            // Your own browser from this computer, carried to the window's server (relay.rs).
+            "relay_carry",
+            "relay_state",
+            "relay_stop",
         ]),
     ))
     .unwrap();

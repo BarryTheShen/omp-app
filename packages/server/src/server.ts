@@ -8,7 +8,7 @@ import {
   SOCKET_PROTOCOL,
   WelcomeFrame as WelcomeFrameSchema,
 } from "@omp-app/contracts";
-
+import type { CarriedLink, RelayHost } from "./browser/edge-relay";
 import {
   type DevicePairing,
   deviceCookie,
@@ -71,6 +71,11 @@ export interface AppServerOptions {
   readonly machineOf?: MachineNamer;
   /** Agent access to enrolled machines (#20): enrollment, and each machine's access link. Off without it. */
   readonly deviceAccess?: DeviceAccessServer;
+  /**
+   * The relay for the user's own browser: a paired device's carrier (`omp-app relay`, the desktop app) brings the relay
+   * extension's connection to it at `/browser-relay`, so no tunnel to this computer is needed. Off without it.
+   */
+  readonly browserRelay?: Pick<RelayHost, "carry">;
 }
 
 export interface AppServer {
@@ -373,6 +378,9 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     /** A machine's access link (#20), not a page: it never reaches the dispatcher. */
     readonly accessLink?: true;
     access?: AccessLink;
+    /** A carrier of the relay extension's connection (`/browser-relay`), not a page: it never reaches the dispatcher. */
+    readonly relayCarrier?: true;
+    carried?: CarriedLink;
   }
 
   let bunServer: Bun.Server<SocketData>;
@@ -414,7 +422,10 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         });
         if (answer !== undefined) return answer === "upgraded" ? undefined : answer;
       }
-      if (url.pathname === "/ws") {
+      if (
+        url.pathname === "/ws" ||
+        (url.pathname === "/browser-relay" && options.browserRelay !== undefined)
+      ) {
         const authorization = authorizeWebSocketUpgrade(request, policy());
         if (authorization instanceof Response) {
           options.logger?.warn("connection.rejected", {
@@ -445,6 +456,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           ...("closeCode" in authorization
             ? { authFailure: authorization, deviceId: null }
             : { deviceId: authorization.deviceId }),
+          ...(url.pathname === "/browser-relay" ? { relayCarrier: true as const } : {}),
         };
         // The app's protocol is named back to a socket that offered it; one that offered none gets none (a browser fails
         // a socket whose server names a protocol it did not offer).
@@ -507,6 +519,29 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           setTimeout(() => socket.close(closeCode, reason), 0);
           return;
         }
+        if (socket.data.relayCarrier && options.browserRelay !== undefined) {
+          const carried = options.browserRelay.carry({
+            send: (data) => {
+              socket.send(data);
+            },
+            close: (code, reason) => socket.close(code, reason),
+          });
+          if (typeof carried === "string") {
+            setTimeout(() => socket.close(4409, carried.slice(0, 120)), 0);
+            return;
+          }
+          socket.data.carried = carried;
+          // Removing the device ends what it carries, as it ends its pages.
+          const deviceId = socket.data.deviceId;
+          if (devices !== undefined && deviceId !== null) {
+            devices.connections.add(socket.data.id, deviceId, (code, reason) =>
+              socket.close(code, reason),
+            );
+            devices.store.seen(deviceId);
+          }
+          options.logger?.info("browser_relay.carrier", { client: socket.data.client });
+          return;
+        }
         const dispatcherSocket = {
           id: socket.data.id,
           send: (frame: ServerFrame) => {
@@ -528,6 +563,12 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
       },
       message: (socket, message) => {
+        if (socket.data.carried !== undefined) {
+          socket.data.carried.receive(
+            typeof message === "string" ? message : new Uint8Array(message),
+          );
+          return;
+        }
         if (socket.data.access !== undefined) {
           try {
             socket.data.access.receive(
@@ -550,6 +591,11 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
         }
       },
       close: (socket, code, reason) => {
+        if (socket.data.carried !== undefined) {
+          socket.data.carried.close();
+          devices?.connections.remove(socket.data.id);
+          return;
+        }
         if (socket.data.access !== undefined) {
           options.deviceAccess?.hub.detached(socket.data.access);
           return;

@@ -54,7 +54,7 @@ use crate::windows;
 
 /// The server's file name in the app's resource folder (`/usr/lib/omp-app-desktop`), beside the chat host and omp's
 /// native addon files, which both load from their own folder. Programs end in `.exe` on Windows.
-const SERVER: &str = if cfg!(windows) {
+pub(crate) const SERVER: &str = if cfg!(windows) {
     "omp-app-desktop-server.exe"
 } else {
     "omp-app-desktop-server"
@@ -84,7 +84,7 @@ const REMOTE_ERROR_PAGE: &str = "remote-error.html";
 /// turning on, off, extending, sudo, the review, what sessions show, and Remove. Each of the switch's commands acts
 /// only for a window whose server is the one this computer is linked to, and each that grants anything asks the
 /// person's password in the system's dialog, worded by the agent's guard from what it grants.
-const PAGE_PERMISSIONS: [&str; 32] = [
+const PAGE_PERMISSIONS: [&str; 35] = [
     "allow-read-clipboard-png",
     "allow-list-clipboard-files",
     "allow-read-clipboard-file",
@@ -119,6 +119,10 @@ const PAGE_PERMISSIONS: [&str; 32] = [
     "core:app:allow-version",
     // Update this app, in Settings → App → omp-app: only a newer release, and Ubuntu asks the password (update.rs).
     "allow-update-desktop-app",
+    // Your own browser from this computer, carried to the window's server (relay.rs).
+    "allow-relay-carry",
+    "allow-relay-state",
+    "allow-relay-stop",
 ];
 const WINDOW_TITLE: &str = "omp app";
 /// How long a server that was started has to record itself and answer. The server answers only after its omp checks,

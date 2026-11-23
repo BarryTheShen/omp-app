@@ -33,8 +33,10 @@ app can do what your account can do on the computer it runs on, so the app is bu
 
 - **One person per computer.** Another account on the same computer can reach the server's port: the token and
   pairing keep it out of the app, and the app refuses a chat-host folder that is not yours alone, but a service you
-  share is only as private as the service itself. The same goes for the app's browser features while they run: the
-  server's own browser takes DevTools connections, and the relay to your own browser takes its extension's, both on
-  this computer's loopback address only (ports 9333 and 9224) and without a password.
+  share is only as private as the service itself. The same goes for the app's own browser while it runs: it takes
+  DevTools connections on this computer's loopback address only (port 9333), without a password. The relay to your
+  own browser (port 9224) takes the extension only with its token, kept in the app's data folder; from another
+  computer the extension's connection comes through a paired device (`omp-app relay`, or the desktop app), never a
+  tunnel to this computer.
 - **omp's own rules apply in chats.** What a chat may do (its tools, approvals and modes) is omp's, with your
   account's permissions.

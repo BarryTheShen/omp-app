@@ -128,7 +128,11 @@ The browser your chats use. **Chats use** has three choices:
 
 - **omp's hidden one:** a browser omp runs out of sight on the app's computer, signed in to nothing.
 - **The one shown here:** a Chrome on the app's computer, shown live in the panel. **Start the browser** starts it. Type an address, click and type in the page, and chats drive the same tabs; sign in to your sites in it once, and the sign-ins are kept. It needs Google Chrome or Chromium on that computer; if there is none, the panel says "No Chrome or Chromium was found on the server's machine." See [Troubleshooting](troubleshooting.md#the-browser-panel-finds-no-chrome).
-- **Your own browser:** the browser on your own computer (Chrome, Edge or another Chromium browser) with omp's relay extension. **Start the relay** starts the relay on the app's computer. The panel then shows a command to run on your computer, which carries the extension's connection to the app's computer; keep it running while chats use the browser. Once the browser connects, its tabs are listed. While it is on, anything on the app's computer can drive that browser, so put the extension in a profile of its own. Chosen here, it stays until you choose another browser.
+- **Your own browser:** the browser on a computer of yours (Chrome, Edge or another Chromium browser) with omp's relay extension. **Start the relay** starts the relay on the app's computer; it takes the extension only with its token, so no other program there can attach as your browser. Then:
+  - **On the app's own computer**, the panel shows the token: paste it into the extension's options (Token) once.
+  - **From another computer**, the extension's connection comes over the app's own address. In the desktop window there, **Use this computer's browser** does it (it pairs that computer as a device, "Browser relay on <computer>", and starts again with the app). Elsewhere the panel shows `omp-app relay <this address>` to run on that computer, which pairs once with a code from Settings → App → Devices and runs until stopped.
+
+  Once the browser connects, its tabs are listed. Chats drive its tabs, so put the extension in a profile of its own. Removing the relay's device in Settings → App → Devices ends it. Chosen here, it stays until you choose another browser.
 
 ### Agent access
 

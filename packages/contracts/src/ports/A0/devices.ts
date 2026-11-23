@@ -10,8 +10,8 @@ import { z } from "zod";
 import type { PortClient, PortHandlers } from "../../core/envelope";
 import { definePort } from "../../core/envelope";
 
-/** What a device is, as its pairing screen tells it. */
-export const DeviceKind = z.enum(["home-screen-app", "desktop-window", "browser"]);
+/** What a device is, as its pairing screen tells it; "browser-relay" is `omp-app relay`, which carries no page. */
+export const DeviceKind = z.enum(["home-screen-app", "desktop-window", "browser", "browser-relay"]);
 export type DeviceKind = z.infer<typeof DeviceKind>;
 
 /** The name a device is listed under, chosen when it pairs and changed in Settings → Devices. */

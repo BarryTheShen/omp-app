@@ -5,6 +5,7 @@ import {
   type BrowserInput,
   BrowserPort,
   type BrowserStatus,
+  DevicesPort,
 } from "@omp-app/contracts";
 import { ArrowLeft, ArrowRight, Copy, Plus, RotateCw, X } from "lucide-react";
 import {
@@ -21,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { writeClipboard } from "../../clipboard";
+import { desktopBridge } from "../../desktop/bridge";
 import { useSidewaysRow } from "../../sidewaysRow";
 
 const failureText = (failure: unknown): string =>
@@ -236,6 +238,7 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
       </div>
       {(status.target === "edge" || status.edge.problem !== null) && (
         <EdgeSection
+          client={client}
           edge={status.edge}
           chosen={status.target === "edge"}
           onChoose={() =>
@@ -351,21 +354,63 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
   );
 }
 
+/** Whether this page is on the app's own computer, where omp's relay extension reaches the app's relay itself. */
+const onAppComputer = (): boolean =>
+  ["127.0.0.1", "localhost", "[::1]"].includes(window.location.hostname);
+
 /**
- * "Your own browser": the relay's state (none running yet, waiting for the browser with the line that links its
- * computer, or connected with its tabs). Chosen, it stays until another browser is chosen here.
+ * "Your own browser": the relay's state (none running yet, waiting for the browser, or connected with its tabs). On
+ * the app's own computer the extension connects to the relay there with the relay's token; from another computer a
+ * carrier brings its connection: the desktop app there, or `omp-app relay <this address>`. Chosen, it stays until
+ * another browser is chosen here.
  */
 function EdgeSection({
+  client,
   edge,
   chosen,
   onChoose,
 }: {
+  readonly client: AppClient;
   readonly edge: BrowserStatus["edge"];
   readonly chosen: boolean;
   /** Chooses your own browser again: starts the relay. */
   readonly onChoose: () => void;
 }): ReactNode {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [carrying, setCarrying] = useState<"idle" | "starting" | "on">("idle");
+  const [carryFailed, setCarryFailed] = useState<string | null>(null);
+  const bridge = desktopBridge();
+  const here = window.location.origin;
+  const copy = (text: string): void => {
+    void writeClipboard(text).then(() => {
+      setCopied(text);
+      setTimeout(() => setCopied(null), 3_000);
+    });
+  };
+  // The desktop app may carry this computer's browser already (started with the app, or by an earlier click).
+  useEffect(() => {
+    if (bridge === null || onAppComputer()) return;
+    void bridge.invoke("relay_state").then((state) => {
+      if ((state as { server?: string | null }).server === here) setCarrying("on");
+    });
+  }, [bridge, here]);
+  const carry = (): void => {
+    if (bridge === null) return;
+    setCarrying("starting");
+    setCarryFailed(null);
+    client
+      .port(DevicesPort)
+      .newCode({})
+      .then(({ code }) => bridge.invoke("relay_carry", { code }))
+      .then(
+        () => setCarrying("on"),
+        (failure: unknown) => {
+          setCarrying("idle");
+          setCarryFailed(typeof failure === "string" ? failure : failureText(failure));
+        },
+      );
+  };
+  const command = `omp-app relay ${here}`;
   return (
     <section
       aria-label="Your own browser"
@@ -378,8 +423,9 @@ function EdgeSection({
       ) : edge.connected ? (
         <>
           <p className="text-t1">
-            Connected: {browserName(edge.browser)}. Chats drive its tabs; the ones they open are
-            grouped as "omp".
+            Connected: {browserName(edge.browser)}
+            {edge.carried ? ", from another computer" : ""}. Chats drive its tabs; the ones they
+            open are grouped as "omp".
           </p>
           <ul aria-label="Its tabs" className="flex flex-col gap-1">
             {edge.tabs.map((tab) => (
@@ -401,35 +447,84 @@ function EdgeSection({
             Start the relay
           </Button>
         </div>
+      ) : onAppComputer() ? (
+        <>
+          <p className="text-t2">
+            Waiting for your browser. On this computer, open omp's relay extension's options and set
+            its token to:
+          </p>
+          {edge.extensionToken === null ? (
+            <p className="text-xs text-t3">
+              (none: the relay running is one omp started, which takes the extension without one)
+            </p>
+          ) : (
+            <div className="flex items-center gap-1">
+              <code className="min-w-0 flex-1 rounded bg-l1 px-2 py-1 text-xs break-all">
+                {edge.extensionToken}
+              </code>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="Copy the token"
+                onClick={() => copy(edge.extensionToken ?? "")}
+              >
+                <Copy /> {copied === edge.extensionToken ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          )}
+        </>
+      ) : bridge !== null ? (
+        <>
+          {carrying === "on" ? (
+            <p className="text-t2">
+              This desktop app carries your browser to the app: open the browser with omp's relay
+              extension on this computer.
+            </p>
+          ) : (
+            <div className="flex items-center gap-2">
+              <p className="min-w-0 flex-1 text-t2">
+                Waiting for your browser. Use the browser on this computer: this desktop app carries
+                its relay extension to the app, as a paired device.
+              </p>
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={carrying === "starting"}
+                onClick={carry}
+              >
+                {carrying === "starting" ? "Connecting…" : "Use this computer's browser"}
+              </Button>
+            </div>
+          )}
+          {carryFailed !== null && (
+            <p role="alert" className="text-xs text-bad-ink">
+              {carryFailed}
+            </p>
+          )}
+        </>
       ) : (
         <>
           <p className="text-t2">
-            Waiting for your browser. On your computer, keep this running while chats use it (it
-            carries the relay extension's connection to the app's computer):
+            Waiting for your browser. On the computer it runs on, open this app in the desktop app
+            and choose Use this computer's browser here, or run this there and keep it running (it
+            pairs once with a code from Settings → App → Devices):
           </p>
           <div className="flex items-center gap-1">
             <code className="min-w-0 flex-1 rounded bg-l1 px-2 py-1 text-xs break-words">
-              {edge.link}
+              {command}
             </code>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                void writeClipboard(edge.link).then(() => {
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 3_000);
-                });
-              }}
-            >
-              <Copy /> {copied ? "Copied" : "Copy"}
+            <Button size="sm" variant="ghost" onClick={() => copy(command)}>
+              <Copy /> {copied === command ? "Copied" : "Copy"}
             </Button>
           </div>
-          <p className="text-xs text-t3">
-            Your browser needs omp's relay extension (Chrome, Edge or another Chromium browser), on
-            its usual port. While it is chosen, anything on the app's computer can drive it: put the
-            extension in a profile of its own, signed in only to the sites chats should reach.
-          </p>
         </>
+      )}
+      {!edge.connected && edge.running && (
+        <p className="text-xs text-t3">
+          Your browser needs omp's relay extension (Chrome, Edge or another Chromium browser), on
+          its usual port. Chats drive its tabs: put the extension in a profile of its own, signed in
+          only to the sites chats should reach.
+        </p>
       )}
       {chosen && (
         <p className="text-xs text-t3">Chats use it until another browser is chosen here.</p>

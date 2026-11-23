@@ -35,8 +35,9 @@ The server listens on 127.0.0.1 only, whatever the port. `--lines` does somethin
 |---|---|
 | `omp-app tui [folder] [-- omp's options]` | Opens omp's own terminal app in the folder (default: the current one), on the app's chats, inside a tmux session named for the folder. Everything after `--` goes to omp, for example `omp-app tui -- --resume <chat id>`. It takes no `--port`, `--no-open` or `--lines`. It needs a real terminal (over SSH, use `ssh -t`) and tmux, and it says so when either is missing. Run again in the same folder, it goes back to the session; inside tmux it switches to the session instead of nesting one. See [Using the app](using.md#omp-in-the-terminal-on-the-same-chats). |
 | `omp-app pair` | Prints a one-time code for a new device, with its QR code. The code works once, for 10 minutes; running the command again makes a new code, and the old one stops working. It needs the app to be running, and it takes no folder or options. See [Other devices](devices.md#how-do-i-pair-a-device). |
-| `omp-app devices` | Lists the paired devices: the start of each id, its name, its kind (Home Screen app, desktop window or browser) and when it last connected, and how many devices are asking to pair. It needs the app to be running. |
+| `omp-app devices` | Lists the paired devices: the start of each id, its name, its kind (Home Screen app, desktop window, browser or browser relay) and when it last connected, and how many devices are asking to pair. It needs the app to be running. |
 | `omp-app devices remove <device>` | Removes a paired device, named by its id, the first characters of its id (at least 4), or its name in any letter case. The device's key stops working and its open windows close. It says so when no device or several devices match. |
+| `omp-app relay <app address> [--code <code>] [--port <n>]` | Run on the computer your own browser is on: carries omp's relay extension's connection (it connects to 127.0.0.1:9224 there, or the port `--port` gives and the extension's options name) to the app at that address, its `https` address or `http://127.0.0.1:<port>`. The first time it pairs as a device, "Browser relay on <computer>", with a one-time code (`--code`, or it asks), and keeps its key in `relay-keys.json` in the state folder (readable by your account only). It runs until Ctrl+C, and stops by itself when its device is removed. See [Using the app](using.md#browser). |
 | `omp-app logs [--lines <n>]` | Prints where the app's log is and its last lines, oldest first, from the current and the previous log file. `--lines <n>` (or `--lines=<n>`) sets how many; the default is 100. `n` is a whole number above 0. |
 | `omp-app debug-report` | Writes `omp-app-debug-<time>.log` in the current folder (readable by your account only): the app and omp versions, the last 2,000 log lines and the omp processes of the running server. It is meant to be attached to an issue. **Save debug log** in the app (the palette, or Settings → App) downloads the same report. See [Troubleshooting](troubleshooting.md#how-do-i-save-the-debug-log). |
 
@@ -120,6 +121,7 @@ Undo: run `systemctl --user edit omp-app` again and delete the lines, or run `sy
 | `omp-app.log`, `omp-app.log.1` | The app's log, and the part before it. Together they never pass 15 MiB. It records the versions and folders, omp's start and checks, every omp process, every browser connection (opened, closed with its code, turned away), every failed call, crashes, the page's errors, the page's measurements (such as how a lost connection came back), and every 30 seconds the server's memory and how long it was blocked at worst. It never holds your prompts, file contents, the access token in the launch link, or API keys, and each line is scrubbed for key and token shapes before it is saved. File paths and error messages can still appear. |
 | `launch-token` | The secret in the launch link (after `#token=`), 43 characters, readable by your account only. It stays the same from one start to the next, so a saved link keeps working. Delete it and restart the app to get a new link; the old link then says it has expired. |
 | `instance.json` | The record of the running server: its process id, its link (with the token) and its version. The command, the window and `omp-app pair` read it to find the running app. It is removed when the server stops, and readable by your account only. |
+| `relay-keys.json` | On a computer that runs `omp-app relay` (or the desktop window's Use this computer's browser): the key it paired with for each app address. Readable by your account only. |
 
 ### The app data folder
 
@@ -140,6 +142,7 @@ Undo: run `systemctl --user edit omp-app` again and delete the lines, or run `sy
 | `session-summaries.json`, `session-subagents.json`, `omp-probe-cache.json` | Caches of chat titles, subagents and what omp reported at its last start. |
 | `launch-links.json` | Digests (not the tokens) of earlier launch tokens, so an old link can say it has expired. |
 | `browser-edge.json` | Whether "Your own browser" is chosen in the Browser panel. |
+| `browser-relay-token` | The token omp's relay extension gives the app's relay (an extension on this computer has it in its options). Readable by your account only. Delete it to make a new one at the relay's next start. |
 | `server-browser/profile/` | The profile of the app's own browser, with the sign-ins and cookies you made in it. |
 | `omp-app-usage-reset-policy.yml` | A small omp settings file the app adds to every chat it runs (see below). |
 | `tasks.json` | The queue of messages for chats (the Tasks list): scheduled messages and notices from programs, each sent when its chat is free. |
@@ -179,6 +182,6 @@ Two settings are changed by the app itself, in the global file, when you choose 
 | `browser.relay` | Set to `true` when you choose "Your own browser", and removed when you choose another browser. A `browser.relay` you set by hand counts as that choice and stays until you choose another browser in the panel. |
 | `browser.cdpUrl` | Set to the address of the app's own browser (`http://127.0.0.1:<port>`, the DevTools port) when you choose "The one shown here", and removed when chats stop using it. |
 
-Choosing "omp's hidden one" leaves both unset. The relay for your own browser listens on port 9224 of 127.0.0.1.
+Choosing "omp's hidden one" leaves both unset. The relay for your own browser listens on port 9224 of 127.0.0.1 and takes the extension only with the token in `browser-relay-token` in the app data folder.
 
 The app also adds one settings file of its own to every chat it runs, through omp's `PI_CONFIG_FILES`: `omp-app-usage-reset-policy.yml` in the data folder, which turns off `codexResets.autoRedeem` and `claudeResets.autoRedeem`, so that a chat does not silently spend your saved provider resets. Chats you open with `omp-app tui` do not get it.

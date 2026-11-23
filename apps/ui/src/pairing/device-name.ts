@@ -6,6 +6,7 @@ export const DEVICE_KIND_WORDS: Record<DeviceKind, string> = {
   "home-screen-app": "Home Screen app",
   "desktop-window": "desktop window",
   browser: "browser",
+  "browser-relay": "browser relay",
 };
 
 /** What the pairing screen guesses this device is: the name it suggests, and its kind. */

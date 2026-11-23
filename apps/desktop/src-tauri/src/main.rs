@@ -32,6 +32,7 @@ mod downloads;
 mod gstreamer;
 #[cfg(target_os = "linux")]
 mod keys;
+mod relay;
 mod remote;
 mod server;
 mod signals;
@@ -97,6 +98,9 @@ fn main() {
             update::update_desktop_app,
             access::access_here,
             access::access_set_up_here,
+            relay::relay_carry,
+            relay::relay_state,
+            relay::relay_stop,
         ])
         .on_window_event(|window, event| match event {
             // A window that is not the last closes alone. The last one hides at once, and the app ends (see
@@ -119,6 +123,7 @@ fn main() {
             signals::watch(app.handle().clone());
             server::start(app.handle().clone(), link);
             access::watch(app.handle().clone());
+            relay::start_kept(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -126,6 +131,7 @@ fn main() {
     app.run(|app, event| {
         if let RunEvent::Exit = event {
             server::quitting(app);
+            relay::quitting();
         }
     });
 }

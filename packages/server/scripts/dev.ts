@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { arch, cpus, homedir, hostname, platform, release, totalmem, userInfo } from "node:os";
+import { arch, cpus, homedir, hostname, platform, release, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { VERSION as OMP_VERSION } from "@oh-my-pi/pi-utils/dirs";
 import {
@@ -954,6 +954,11 @@ export async function createCompositionServer(
   // profile, shown in the Browser panel; none when no Chrome is found) or the user's Edge through omp's relay, run here
   // while chosen. Chosen in the panel: omp's `browser.cdpUrl` or `browser.relay`, every folder.
   const chrome = findChrome(env);
+  const edgeRelay = new EdgeRelay({
+    port: EDGE_RELAY_PORT,
+    tokenFile: join(appDataDir, "browser-relay-token"),
+    logger,
+  });
   const browserRuntime = createBrowserRuntime({
     browser:
       chrome === null
@@ -965,10 +970,8 @@ export async function createCompositionServer(
             noSandbox: env.OMP_APP_BROWSER_NO_SANDBOX === "1",
             logger,
           }),
-    edge: new EdgeRelay({ port: EDGE_RELAY_PORT, logger }),
-    // The laptop's end listens on its own loopback only, and ssh stops when the forward fails instead of running on
-    // unforwarded (#2796).
-    edgeLink: `ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:${EDGE_RELAY_PORT}:127.0.0.1:${EDGE_RELAY_PORT} ${userInfo().username}@${hostname()}`,
+    // Its extension's connection comes from the browser's computer through a carrier, at `/browser-relay` (below).
+    edge: edgeRelay,
     // Whether "Your own browser" was chosen in the panel: kept across restarts in the app's data folder. A file from when
     // the choice had an end (`until`) is a choice still on.
     edgeChoice: {
@@ -1126,6 +1129,7 @@ export async function createCompositionServer(
     ...(frameAncestors.length === 0 ? {} : { frameAncestors }),
     devices,
     ...(deviceAccess === undefined ? {} : { deviceAccess }),
+    browserRelay: edgeRelay,
     machineOf: createMachineNames({ whois: tailscaleWhois, hostname }),
   });
   appAddress = remote?.origin ?? server.url;

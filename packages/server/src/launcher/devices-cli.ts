@@ -46,6 +46,7 @@ const KIND_WORDS: Record<PairedDevice["kind"], string> = {
   "home-screen-app": "Home Screen app",
   "desktop-window": "desktop window",
   browser: "browser",
+  "browser-relay": "browser relay",
 };
 
 /** The paired devices, one line each: the start of the id, the name, the kind, and when it last connected. */
