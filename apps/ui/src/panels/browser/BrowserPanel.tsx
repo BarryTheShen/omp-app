@@ -5,6 +5,7 @@ import {
   type BrowserInput,
   BrowserPort,
   type BrowserStatus,
+  type BrowserTarget,
   DevicesPort,
 } from "@omp-app/contracts";
 import { ArrowLeft, ArrowRight, Copy, Plus, RotateCw, X } from "lucide-react";
@@ -111,9 +112,22 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
   const [opening, setOpening] = useState<Promise<string> | null>(null);
   const [focusTick, setFocusTick] = useState(0);
   const [starting, setStarting] = useState(false);
+  /**
+   * Reads may answer out of order (the panel reads again at every change, about every 2 s while your browser is
+   * connected): only the newest asked shows, and none asked before something chosen here (a browser, a page), which
+   * would put the old choice back for a moment.
+   */
+  const asked = useRef(0);
+  const chosenAt = useRef(0);
+  /** The browser just chosen, shown at once while the server switches (starting your browser's relay takes seconds). */
+  const [choosing, setChoosing] = useState<BrowserTarget | null>(null);
+  /** The page just picked, kept shown until the browser has it in front. */
+  const picked = useRef<{ readonly id: string; readonly at: number } | null>(null);
   const read = useCallback(async () => {
+    const mine = ++asked.current;
     try {
       const next = await client.port(BrowserPort).status({});
+      if (mine !== asked.current || mine < chosenAt.current) return;
       setStatus(next);
       setProblem(null);
       const { tabs, front } = next.app;
@@ -125,6 +139,12 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
         setShown(wanted);
         setOpening(null);
         return;
+      }
+      const pick = picked.current;
+      if (pick !== null) {
+        if (front === pick.id || !listed(pick.id) || Date.now() - pick.at > 3_000)
+          picked.current = null;
+        else return;
       }
       // The panel shows the tab the browser has in front, the only one that draws and takes input: a page a chat opens
       // comes forward here too. A tab just opened is shown once the list has it.
@@ -143,6 +163,7 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
           .show({ id: chosen })
           .catch(() => undefined);
     } catch (failure) {
+      if (mine !== asked.current) return;
       setProblem(
         failure instanceof AppFailure && failure.appError.code === "not_found"
           ? "This server has no browser yet: it needs the app's next update."
@@ -150,6 +171,25 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
       );
     }
   }, [client]);
+  /** Chooses the browser chats use: shown chosen at once, and the server's answer taken over every read before it. */
+  const choose = useCallback(
+    (target: BrowserTarget): void => {
+      setChoosing(target);
+      chosenAt.current = ++asked.current;
+      client
+        .port(BrowserPort)
+        .setTarget({ target })
+        .then(
+          (next) => {
+            chosenAt.current = ++asked.current;
+            setStatus(next);
+          },
+          (failure: unknown) => setProblem(failureText(failure)),
+        )
+        .finally(() => setChoosing(null));
+    },
+    [client],
+  );
   useEffect(() => {
     void read();
     let live = true;
@@ -177,6 +217,7 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
       </p>
     );
   const { app } = status;
+  const target = choosing ?? status.target;
   const tab = app.tabs.find((candidate) => candidate.id === shown) ?? null;
   return (
     <section
@@ -197,14 +238,13 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
           size="sm"
           spacing={0.5}
           className="grid w-full grid-cols-3 rounded-lg border border-l2 p-0.5"
-          value={[status.target]}
+          value={[target]}
           onValueChange={(next) => {
-            const picked = next[0];
-            if (picked !== "off" && picked !== "app" && picked !== "edge") return;
-            client
-              .port(BrowserPort)
-              .setTarget({ target: picked })
-              .then(setStatus, (failure: unknown) => setProblem(failureText(failure)));
+            const pick = next[0];
+            if (pick !== "off" && pick !== "app" && pick !== "edge") return;
+            // Leaving your own browser: this desktop app stops carrying it too, so nothing stays connected unseen.
+            if (status.target === "edge" && pick !== "edge") stopCarrying();
+            choose(pick);
           }}
         >
           <ToggleGroupItem
@@ -229,24 +269,23 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
         </ToggleGroup>
         {/* What the chosen one is (#2797). */}
         <p className="text-t3">
-          {status.target === "off"
+          {target === "off"
             ? "A browser omp runs out of sight on the app's computer, signed in to nothing."
-            : status.target === "app"
+            : target === "app"
               ? "The browser below, on the app's computer: sign in to sites in it, and watch chats use it or take over."
               : "The browser on your own computer: Chrome, Edge or another Chromium browser with omp's relay extension, signed in as you."}
         </p>
       </div>
-      {(status.target === "edge" || status.edge.problem !== null) && (
+      {(target === "edge" || status.edge.problem !== null) && (
         <EdgeSection
           client={client}
           edge={status.edge}
-          chosen={status.target === "edge"}
-          onChoose={() =>
-            client
-              .port(BrowserPort)
-              .setTarget({ target: "edge" })
-              .then(setStatus, (failure: unknown) => setProblem(failureText(failure)))
-          }
+          chosen={target === "edge"}
+          onChoose={() => choose("edge")}
+          onStop={() => {
+            stopCarrying();
+            choose("off");
+          }}
         />
       )}
       {!app.running ? (
@@ -294,6 +333,8 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
                     aria-selected={page.id === shown}
                     className={`max-w-40 truncate rounded px-2 py-1 text-xs ${page.id === shown ? "bg-l2 text-t1" : "text-t2 hover:bg-l1"}`}
                     onClick={() => {
+                      picked.current = { id: page.id, at: Date.now() };
+                      chosenAt.current = ++asked.current;
                       setShown(page.id);
                       act(client.port(BrowserPort).show({ id: page.id }));
                     }}
@@ -358,23 +399,38 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
 const onAppComputer = (): boolean =>
   ["127.0.0.1", "localhost", "[::1]"].includes(window.location.hostname);
 
+/** This desktop app stops carrying this computer's browser to this server, and forgets it chose to (`relay_stop`). */
+function stopCarrying(): void {
+  const bridge = desktopBridge();
+  if (bridge === null || onAppComputer()) return;
+  const here = window.location.origin;
+  void bridge
+    .invoke("relay_state")
+    .then((state) => {
+      if ((state as { server?: string | null }).server === here) return bridge.invoke("relay_stop");
+    })
+    .catch(() => undefined);
+}
 /**
  * "Your own browser": the relay's state (none running yet, waiting for the browser, or connected with its tabs). On
  * the app's own computer the extension connects to the relay there with the relay's token; from another computer a
  * carrier brings its connection: the desktop app there, or `omp-app relay <this address>`. Chosen, it stays until
- * another browser is chosen here.
+ * another browser is chosen here, or until **Stop using your browser**, which also ends this desktop app's carrying.
  */
 function EdgeSection({
   client,
   edge,
   chosen,
   onChoose,
+  onStop,
 }: {
   readonly client: AppClient;
   readonly edge: BrowserStatus["edge"];
   readonly chosen: boolean;
   /** Chooses your own browser again: starts the relay. */
   readonly onChoose: () => void;
+  /** Chats stop using your browser (omp's hidden one instead), and this desktop app stops carrying it. */
+  readonly onStop: () => void;
 }): ReactNode {
   const [copied, setCopied] = useState<string | null>(null);
   const [carrying, setCarrying] = useState<"idle" | "starting" | "on">("idle");
@@ -527,7 +583,14 @@ function EdgeSection({
         </p>
       )}
       {chosen && (
-        <p className="text-xs text-t3">Chats use it until another browser is chosen here.</p>
+        <div className="flex items-center gap-2">
+          <p className="min-w-0 flex-1 text-xs text-t3">
+            Chats use it until another browser is chosen here, or you stop.
+          </p>
+          <Button size="sm" variant="secondary" onClick={onStop}>
+            Stop using your browser
+          </Button>
+        </div>
       )}
     </section>
   );

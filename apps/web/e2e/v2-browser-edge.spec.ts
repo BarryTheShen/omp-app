@@ -98,6 +98,12 @@ realTest.describe("new UI: your own browser, through omp's relay", () => {
       await page.getByRole("button", { name: "Browser", exact: true }).click();
       const choice = panel(page).getByRole("group", { name: "Chats use" });
       await choice.getByRole("button", { name: "Your own browser" }).click();
+      // Chosen at once, while the relay starts (seconds): the choice does not wait for it, nor flick back.
+      await expect(choice.getByRole("button", { name: "Your own browser" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+        { timeout: 1_000 },
+      );
       const section = panel(page).getByRole("region", { name: "Your own browser" });
       await expect(section).toContainText("Waiting for your browser", { timeout: 30_000 });
       // No ssh line and no account name: on the app's own computer, the extension's token.
@@ -109,7 +115,9 @@ realTest.describe("new UI: your own browser, through omp's relay", () => {
       expect((await readFile(join(realApp.appDataDir, "browser-relay-token"), "utf8")).trim()).toBe(
         token,
       );
-      await expect(section).toContainText("Chats use it until another browser is chosen here.");
+      await expect(section).toContainText(
+        "Chats use it until another browser is chosen here, or you stop.",
+      );
       await expect(choice.getByRole("button", { name: "Your own browser" })).toHaveAttribute(
         "aria-pressed",
         "true",
@@ -127,6 +135,17 @@ realTest.describe("new UI: your own browser, through omp's relay", () => {
 
       // Another choice ends it: the relay stops, and the setting goes.
       await choice.getByRole("button", { name: "omp's hidden one" }).click();
+      await expect(choice.getByRole("button", { name: "omp's hidden one" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      await expect(section).toHaveCount(0);
+      await expect.poll(settings).not.toMatch(/relay: true/);
+
+      // Chosen again, Stop using your browser ends it too: omp's hidden one is chosen, and the setting goes.
+      await choice.getByRole("button", { name: "Your own browser" }).click();
+      await expect.poll(settings).toMatch(/relay: true/);
+      await section.getByRole("button", { name: "Stop using your browser" }).click();
       await expect(choice.getByRole("button", { name: "omp's hidden one" })).toHaveAttribute(
         "aria-pressed",
         "true",

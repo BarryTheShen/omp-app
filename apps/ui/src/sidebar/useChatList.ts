@@ -79,11 +79,15 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
   const reread = useRef<() => Promise<void>>(async () => undefined);
   /** False once the server turned out older than its chats' first messages (#2825): the rows then stay "New chat". */
   const namesKnown = useRef(true);
+  /** The chats the list read last has files for: a chat starting that is not among them has its row added at once. */
+  const listedIds = useRef<ReadonlySet<string>>(new Set());
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     // Another folder: its list from last time until it is read.
-    setSessions(keptChats(folder).get() ?? []);
+    const kept = keptChats(folder).get() ?? [];
+    setSessions(kept);
+    listedIds.current = new Set(kept.map((session) => session.id));
     // The paused chats; a server older than the pause list has none to give, and the list reads on without them.
     const readPaused = async (): Promise<void> => {
       const listed = await client.port(SessionFileStore).listPaused({ folder });
@@ -116,6 +120,7 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
       if (!active) return;
       keptChats(folder).set(listed.sessions.map((session) => ({ ...session, subagents: [] })));
       setSessions(listed.sessions);
+      listedIds.current = new Set(listed.sessions.map((session) => session.id));
       // A window and its workspace show the name the list shows (#2829).
       noteSavedTitles(listed.sessions.map((session) => [session.id, titleOf(session)] as const));
       setStarting(listed.running ?? []);
@@ -147,6 +152,19 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
           else next.delete(change.id);
           return next;
         });
+        // A chat whose first reply starts has no file yet: its row shows now, named by its first message, instead of
+        // after the list is read again (seconds in a folder of many chats). A chat kept ready has no id of its own yet.
+        if (
+          change.busy &&
+          !listedIds.current.has(change.id) &&
+          !change.id.startsWith("provisional-")
+        ) {
+          const chat = { id: change.id, folder };
+          setStarting((current) =>
+            current.some((each) => each.id === chat.id) ? current : [...current, chat],
+          );
+          void nameStarting([chat]);
+        }
         // A turn's start or end can come with a file omp has just written.
         soon();
       }),
