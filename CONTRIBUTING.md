@@ -10,7 +10,7 @@ Do not open an issue for a vulnerability. Report it privately through GitHub, as
 
 ## Setup
 
-[docs/development.md](docs/development.md) covers the prerequisites, `bun install`, running the app from source, each workspace's scripts and the code style.
+[docs/development.md](docs/development.md) covers the prerequisites, `bun install`, running the app from source, each workspace's scripts and the code style. [AGENTS.md](AGENTS.md) is the short version, written for AI coding agents.
 
 ## The checks a change must pass
 
@@ -32,7 +32,11 @@ OMP_APP_REAL_OMP=1 bunx playwright test e2e/<spec>.spec.ts
 
 A change to the chat host or the server can have a real-omp test in `packages/server/test/e2e`; a change to `apps/desktop` also needs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` in `apps/desktop/src-tauri`. [docs/testing.md](docs/testing.md) says how each kind of test is run and what it needs.
 
-The workflows in `.github/workflows` run only the desktop checks (on pull requests that touch the desktop) and the release; they do not run the typecheck, the lint, the unit tests or the end-to-end specs. Run those yourself.
+The workflows in `.github/workflows` run the server's and contracts' tests on macOS and Windows (on pushes to `main`), the desktop checks (on pull requests that touch the desktop) and the release; none runs the lint, the UI's unit tests or the end-to-end specs ([docs/testing.md](docs/testing.md#what-ci-runs)). Run those yourself.
+
+## Keep the docs current
+
+A change updates the documentation in the same commit. When a behaviour, a setting, a command, a file the app keeps, a message or a screen changes, change the page that describes it ([docs/README.md](docs/README.md) says which page covers what); a new feature gets its line on the page for its area, and a new page goes in both indexes ([README.md](README.md#documentation) and [docs/README.md](docs/README.md)). Name exact labels, paths and commands as the code has them, and check each against the code. A change that leaves a page wrong is not finished.
 
 ## Commit messages
 

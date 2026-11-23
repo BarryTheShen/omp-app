@@ -1,13 +1,14 @@
 # omp app documentation
 
-omp app is a chat app for omp, the coding agent: a desktop window for Linux and a web app for your other devices. The [front page](../README.md) says what it does. These pages say how to use it and how it is built.
+omp app is a chat app for omp, the coding agent: a server and desktop window for Linux, the window for macOS and Windows too, a web app for your other devices, and panels for other apps. The [front page](../README.md) says what it does. These pages say how to use it and how it is built. An AI agent setting it up or changing the code starts at [AGENTS.md](../AGENTS.md).
 
 ## Use the app
 
 | Page | What it answers |
 |---|---|
-| [Install](install.md) | What you need, how to download and check the two packages, how to install, start, update and remove them, how the user service works, and where the app keeps its files. |
-| [Other devices](devices.md) | How to open the app from a phone, tablet or another computer at an HTTPS address you serve it at, pair and remove devices, add it to an iPhone or iPad Home Screen, open another computer's server in the desktop window, and share a port. |
+| [Install](install.md) | What you need, how to download and check the packages, how to install, start, update (from inside the app or by hand) and remove them, the window on macOS and Windows, how the user service works, and where the app keeps its files. |
+| [Other devices](devices.md) | How to open the app from a phone, tablet or another computer at an HTTPS address you serve it at, pair and remove devices, add it to an iPhone or iPad Home Screen, get notifications, open another computer's server in the desktop window, and share a port. |
+| [Agent access](agent-access.md) | Letting chats run commands on another computer of yours: setting it up, allowing chats, sharing folders, what a chat sees, and what is kept. |
 | [Using the app](using.md) | Every part of the app, one section each: the chat list and workspaces, a chat, the message box, models and plan mode, the side panel, the dashboard, Settings, the palette and its table of keys, tours, the phone layout, and omp in the terminal. |
 | [Configuration](configuration.md) | The options of the `omp-app` and `omp-app-desktop` commands, the environment variables, the folders and files the app keeps, and the omp settings it reads or changes. |
 | [Troubleshooting](troubleshooting.md) | What each message the app shows or prints means and what to do about it, and how to save the debug log. |
@@ -19,9 +20,10 @@ omp app is a chat app for omp, the coding agent: a desktop window for Linux and 
 | [Architecture](architecture.md) | How the app is put together: the processes, the wire between the page and the server, the chat host, storage, and the checks that keep the server private. |
 | [Development](development.md) | What you need to work on the code, how to run it from a checkout, and the conventions the code follows. |
 | [Testing](testing.md) | The test suites, how to run each, and what CI runs. |
-| [Integrations](integrations.md) | Showing a chat in another app's panel: which pages may frame it (browser extensions and VS Code always may), how a panel signs in, the embed protocol, the `@omp-app/embed` library and a minimal host page. |
+| [Integrations](integrations.md) | Showing a chat in another app's panel: which pages may frame it (browser extensions and VS Code always may), how a panel signs in, the embed protocol, the `@omp-app/embed` library, a minimal host page, and the Firefox, Chrome and Edge, and VS Code panels in this repository. |
 | [Releasing](releasing.md) | How releases and packages are built and published, and how an installed app gets an update. |
-| [Contributing](../CONTRIBUTING.md) | Who can contribute, the checks a change must pass, and the design rules. |
+| [Contributing](../CONTRIBUTING.md) | Who can contribute, the checks a change must pass, keeping the docs current, and the design rules. |
+| [AGENTS.md](../AGENTS.md) | The same, short and step by step, for an AI coding agent. |
 
 Each workspace has a short page of its own:
 
@@ -33,7 +35,9 @@ Each workspace has a short page of its own:
 | [packages/contracts](../packages/contracts/README.md) | The shared types and schemas. |
 | [apps/ui](../apps/ui/README.md) | The web app. |
 | [apps/desktop](../apps/desktop/README.md) | The desktop window. |
-| [apps/zen](../apps/zen/README.md) | The Firefox and Zen extension: the chat in the sidebar, for one tab. |
+| [apps/device](../apps/device/README.md) | `omp-app-device`: agent access on a computer, its parts, setup and command line. |
+| [apps/zen](../apps/zen/README.md) | The Firefox and Zen extension, and the same for Chrome and Edge: the chat in the browser's side panel, for one tab. |
+| [apps/vscode](../apps/vscode/README.md) | The VS Code extension: the chat in VS Code's side bar, for the open folder. |
 | [apps/web](../apps/web/README.md) | The end-to-end tests. |
 
 ## Also in the repository

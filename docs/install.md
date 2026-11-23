@@ -1,6 +1,6 @@
 # Install omp app
 
-This page covers installing, starting, updating and removing omp app on Linux. To open the app from your phone or another computer afterwards, see [Other devices](devices.md).
+This page covers installing, starting, updating and removing omp app on Linux, and the desktop window on macOS and Windows. To open the app from your phone or another computer afterwards, see [Other devices](devices.md).
 
 ## What do I need?
 
@@ -58,6 +58,19 @@ Replace `<version>` with the version in the file name. Then:
 
 If you installed both, the menu has two entries named "omp app". The window's one opens a window; the command's one opens a terminal that runs `omp-app`.
 
+## Can I use it on macOS or Windows?
+
+The desktop window, yes; the `omp-app` command and its service are Linux's only. Each release also has:
+
+| File | For |
+|---|---|
+| `omp-app-desktop_<version>_aarch64.dmg` | macOS on Apple silicon: open it and drag the app to Applications |
+| `omp-app-desktop_<version>_x64-setup.exe` | Windows on x64: installs for you, without administrator rights |
+
+Each has a `.sha256` file beside it: compare it with `shasum -a 256 <file>` on macOS or `Get-FileHash <file>` in PowerShell. The bundles are not signed yet, so the first start needs a confirmation: on macOS, right-click the app and choose Open; on Windows, choose "More info" and then "Run anyway". The window starts its own server, as on Linux. Agent access and "Update this app" are Linux's for now; on these systems the window names the release to download instead ([apps/desktop](../apps/desktop/README.md#macos-and-windows)).
+
+Releases also carry the panels that show a chat in other apps: `omp-app-zen_*` for Firefox and Zen, `omp-app-chrome_*.zip` for Chrome and Edge, and `omp-app-vscode_*.vsix` for VS Code ([Integrations](integrations.md#hosts-in-this-repository)).
+
 ## What happens the first time I start it?
 
 **The window** opens at once on a starting page that says "Starting omp app". This can take a few seconds, and up to a minute the first time. If a server is already running for your account, the window opens the app on it. Otherwise the window starts one on your home folder, in a session of its own, and opens the app when it answers. Closing the window never stops that server, so running chats keep going.
@@ -112,7 +125,12 @@ To give the service environment variables, such as the address for other devices
 
 ## How do I update it?
 
-Download and check the new packages the same way as the first time, then install them over the old ones:
+**From inside the app.** Settings → App → omp-app says when a newer release is out (a dot on the Settings button says so too) and when the server last looked; **Look for a newer release** looks now.
+
+- **Update server** downloads the release's `omp-app` package, checks it against the release's `SHA256SUMS`, installs it and restarts the server; open pages reload into the new release. It is offered where the server is the installed package running as the `omp-app` user service and `sudo` needs no password; elsewhere the section says why and shows the command to run. After an update, **Go back** installs the release before it.
+- **Update this app**, in the desktop window, installs a newer desktop window the same way, asking your password (Linux only).
+
+**By hand.** Download and check the new packages the same way as the first time, then install them over the old ones:
 
 ```bash
 sudo apt install ./omp-app-desktop_<new version>_amd64.deb   # the window, if you use it

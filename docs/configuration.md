@@ -72,6 +72,8 @@ These are the variables you may set. Each is read by the server when it starts, 
 | `OMP_APP_DETACHED_HOSTS` | `1` runs each chat in a host process that outlives the server, so restarting the server stops no chat. See [Installing](install.md#how-do-i-update-it). | Off: a chat ends with the server |
 | `OMP_APP_NEW_CHATS_READY` | `1` keeps a new chat started and waiting in each of the last two folders new chats were opened in, so "New chat" opens at once. A waiting chat is replaced about every 9 minutes and costs one more omp process per folder. The installed `omp-app` command and the window always do this, so the variable changes nothing there; it matters only to a server started from a source checkout. | Off |
 | `OMP_APP_HANDBACK_MS` | With `OMP_APP_DETACHED_HOSTS=1`: how many milliseconds a chat host waits for a server to come back before it hands its chat back (a running turn is finished first). A value that is not a number above 0 is ignored. | `120000` (two minutes) |
+| `OMP_APP_DEVICE_ACCESS` | `1` offers agent access to your other computers ([Agent access](agent-access.md)). It needs `OMP_APP_REMOTE_ORIGIN` too: computers enroll with that address. | Off |
+| `OMP_APP_BIN` | With agent access: the `omp-app` program that chats' `ssh` runs as its proxy (`omp-app device-ssh`). | `omp-app` on the path |
 
 More variables that the app reads, and that are not its own:
 
@@ -81,6 +83,7 @@ More variables that the app reads, and that are not its own:
 | `XDG_CONFIG_HOME`, `XDG_DATA_HOME` | Move the window's config and web data folders. Used only when absolute. |
 | `XDG_RUNTIME_DIR` | Where the sockets of detached chat hosts go (`omp-app-hosts-<id>`); the temporary folder when it is not set. |
 | `PI_CODING_AGENT_DIR` | omp's own variable for its agent folder. The app passes it to every chat, and puts its data folder under it unless `OMP_APP_DATA_DIR` says otherwise. The default is `~/.omp/agent`. |
+| `OMP_APP_ACCESS_SSH_CONFIG` | Not one to set: the server gives it to each chat while agent access is on, naming the `ssh_config` whose `Host` lines are the linked computers. |
 
 ### How do I set variables for the user service?
 
@@ -139,6 +142,14 @@ Undo: run `systemctl --user edit omp-app` again and delete the lines, or run `sy
 | `browser-edge.json` | Whether "Your own browser" is chosen in the Browser panel. |
 | `server-browser/profile/` | The profile of the app's own browser, with the sign-ins and cookies you made in it. |
 | `omp-app-usage-reset-policy.yml` | A small omp settings file the app adds to every chat it runs (see below). |
+| `tasks.json` | The queue of messages for chats (the Tasks list): scheduled messages and notices from programs, each sent when its chat is free. |
+| `push.json` | This server's notification keys and the devices that turned notifications on: readable by your account only. |
+| `updates/`, `update-hold.json` | Releases downloaded by Update server, checked before they install; what an omp update holds back meanwhile. |
+| `omp-update.json`, `omp-update-settings.json`, `omp-update-request.json` | The state, settings and requests of omp's own update job, where one runs. |
+| `usage-shares.json`, `usage-pause-extras.json` | Each chat's estimated part of its provider's usage window, and the chats' budgets and the usage rules' scopes. |
+| `chat-index.sqlite`, `search-settings.json`, `search-key` | Search by meaning: the index of the chats' text, its settings, and the embedding service's key (readable by your account only). |
+| `tui-settings.yml` | The omp settings `omp-app tui` adds to omp's own, so omp in the terminal never updates itself apart from the app. |
+| `device-access/` | Agent access: the linked computers and what ran on each. Its `ssh_config` and proxy socket live in `$XDG_RUNTIME_DIR/omp-app-access` (here, under `run/`, only when that variable is unset). |
 
 Chats themselves are not here. omp keeps them in its own session files under `~/.omp/agent/sessions`, and the app keeps no copy of them, only the caches above.
 

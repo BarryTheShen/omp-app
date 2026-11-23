@@ -131,6 +131,16 @@ Below 640 pixels wide the app uses the phone layout, and a touch screen wider th
 
 **Undo:** remove the icon from the Home Screen, and remove the device in Settings → App → Devices.
 
+## How do I get notifications on a device?
+
+Open Settings → App → Notifications on that device and turn on **Notifications on this device**; the system asks you to allow them. The device then gets a notification when a chat starts waiting for you (a question, an approval) or a reply ends, while no page of the app shows that chat. Tapping one opens the app at that chat. The same section sends a test and lists the other devices that get them, each with Remove.
+
+- **iPhone and iPad:** only the Home Screen app can get them (see above); in Safari the section says how.
+- **The desktop window** shows its own notifications and needs nothing here.
+- Notifications travel through the browser's push service, encrypted for the device; the server keeps its keys and the devices' subscriptions in `push.json` in the app data folder ([Configuration](configuration.md#the-app-data-folder)).
+
+**Undo:** turn it off on the device, or Remove it in the list.
+
 ## How do I open another computer's server in the desktop window?
 
 The window normally opens the app on this computer's own server. It can open the server on another computer instead, at the address that computer serves the app at (as above):

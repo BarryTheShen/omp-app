@@ -155,6 +155,8 @@ The specs in `apps/web/e2e` open the real app in a browser, on the real server a
 
 `apps/web/playwright.config.ts` defines no named projects. Specs run in the system's Google Chrome (`channel: "chrome"`, headless). A spec runs in Playwright's own WebKit with `realTest.use({ browserName: "webkit", channel: "" })`; the specs whose names end in `-webkit.spec.ts` do. Install it once with `bunx playwright install webkit` in `apps/web`. A feature tested in both engines keeps its checks in a `*-checks.ts` file (`v2-math-checks.ts`), and two short specs call it, one per engine. Specs for phones and tablets emulate them with `viewport`, `hasTouch` and `isMobile` in their own context options.
 
+The app's basics (it opens, a new chat answers, the chat is there after a reload) run in all three engines: `v2-engines.spec.ts` (Chrome), `v2-engines-webkit.spec.ts` and `v2-engines-firefox.spec.ts`, from `v2-engines-checks.ts`. The Firefox one needs Playwright's Firefox (`bunx playwright install firefox`) and skips, saying so, without it. The extensions are tested in real browsers: `v2-zen-firefox.spec.ts` loads the Firefox and Zen sidebar into Mozilla's Firefox (`e2e/firefox.ts`), and `v2-chrome-extension.spec.ts` loads the Chrome and Edge panel into Google Chrome.
+
 ### Where the output goes
 
 Screenshots a spec saves go to `.data/screenshots` in the checkout (the `screenshots` export of `real-omp.ts`), a git-ignored folder. Playwright's own traces (kept on a test's first retry) go to `apps/web/test-results`, and its reports to `playwright-report`, both git-ignored.
@@ -199,7 +201,8 @@ The window is checked in three layers:
 
 ## What CI runs
 
-There are two workflows (`.github/workflows/`), and neither runs the typecheck, the lint, the unit tests or the end-to-end specs. Run those yourself before you push ([CONTRIBUTING.md](../CONTRIBUTING.md)).
+There are three workflows (`.github/workflows/`). None runs the lint, the UI's unit tests or the end-to-end specs, so run those yourself before you push ([CONTRIBUTING.md](../CONTRIBUTING.md)).
 
+- **`platforms.yml`** runs on pushes to `main` that change the server, the contracts, the desktop's Rust, the bundle scripts or `bun.lock`, and by hand, on macOS and Windows. It typechecks, runs the contracts' and the server's tests, compiles the app's command and chat host for that system and starts them (`packages/server/scripts/smoke-compiled.ts`), then builds the desktop bundle, lints its crate and starts the window to see it start its server (`packaging/smoke-desktop.ts`), keeping the bundle with the run for a week.
 - **`desktop.yml`** runs on pull requests that change `apps/desktop/**`, `packaging/build-desktop-deb.sh` or `packaging/desktop-smoke-test.sh`, and by hand. It checks the Rust formatting, builds the desktop package, runs clippy and `cargo test`, smoke-tests the package under a virtual display and uploads it as a build artifact.
-- **`release.yml`** runs twice a day and by hand. It builds and smoke-tests both packages before it publishes anything. See [releasing.md](releasing.md).
+- **`release.yml`** runs twice a day and by hand. It builds and smoke-tests both Linux packages before it publishes anything; after the release is out, it builds the macOS and Windows bundles, checks each window starts its server, and adds them to the release. See [releasing.md](releasing.md).

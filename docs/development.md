@@ -4,12 +4,14 @@ How to set up a checkout, run the app from source, and work on each part. For ho
 
 ## Prerequisites
 
-- **[Bun](https://bun.sh) 1.3.14 or later.** The repository is a Bun workspace; the release workflow builds with exactly 1.3.14. Bun is the only package manager, runtime and test runner for the packages.
+- **[Bun](https://bun.sh) 1.3.14.** The repository is a Bun workspace; the release workflow and the platforms workflow use exactly 1.3.14 (install it with `curl -fsSL https://bun.sh/install | bash -s bun-v1.3.14`). Newer Bun runs the app and passes the typecheck, but `packages/server/src/modules/A1/sessions/summary-cache-memory.test.ts` measures the server's memory and fails on Bun 1.4 (about 220–240 MiB against its 150 MiB limit). Bun is the only package manager, runtime and test runner for the packages.
 - **Bun 1.4.4, only to build the chat host.** The chat host is compiled with the Bun release that omp's own release is built with, and `packages/server/scripts/build-chat-host.ts` refuses any other (`CHAT_HOST_BUN_VERSION` in `packages/server/scripts/chat-host-bun.ts`). You need it to build a package, and the end-to-end tests fetch it for you (see [testing.md](testing.md#the-variables-used-only-by-tests-and-the-build)). Running from source does not need it.
 - **Rust (stable), only for the desktop window** in `apps/desktop`, with `rustfmt` and `clippy`, and the Linux libraries Tauri 2 needs. The exact packages and commands are in [apps/desktop/README.md](../apps/desktop/README.md).
 - **Google Chrome, and Playwright's WebKit,** only for the end-to-end tests. The specs run in the system's Chrome; the specs whose names end in `-webkit` run in Playwright's WebKit, which you install once with `bunx playwright install webkit` in `apps/web`.
 
-The packages and the compiled chat host target Linux on x86-64 (`linux-x64`, `amd64`).
+The Linux packages and their chat host target x86-64 (`linux-x64`, `amd64`). The server and the window also build and start on macOS (Apple silicon) and Windows (x64), checked by the platforms workflow ([testing.md](testing.md#what-ci-runs)); how to build the window there is in [apps/desktop/README.md](../apps/desktop/README.md#macos-and-windows).
+
+An AI coding agent can follow [AGENTS.md](../AGENTS.md), the short version of this page and the checks.
 
 ## Setup
 
@@ -81,6 +83,10 @@ Run a workspace's script from the root with `bun run --cwd <folder> <script>`, o
 | `apps/ui` | `@omp-app/ui` | `dev` (`vite`), `typecheck` (`tsc -b`), `test` (`vitest run`), `themes` (`bun scripts/write-themes.ts`), `build` (`tsc -b && vite build`) |
 | `apps/web` | `@omp-app/web` | `typecheck` (`tsc -p tsconfig.json`), `e2e` (`playwright test`) |
 | `apps/desktop` | `@omp-app/desktop` | `tauri` (the Tauri command line); the Rust code is checked with `cargo` in `apps/desktop/src-tauri` |
+| `apps/device` | `@omp-app/device` | `typecheck` (`tsc -p tsconfig.json`), `test` (`bun test`; the real-sshd tests need the folders in [its README](../apps/device/README.md#tests)) |
+| `apps/zen` | `@omp-app/zen` | `build` (`bun scripts/build.ts [version] [--chrome]`), `typecheck`, `test` (`vitest run`) |
+| `apps/vscode` | `omp-app-vscode` | `build`, `typecheck`, `test` (`vitest run`), `test:vscode` (in a real VS Code) |
+| `packages/embed` | `@omp-app/embed` | `build` (one ES module, `dist/omp-embed.js`), `typecheck`, `test` (`bun test`) |
 
 Other scripts you may need:
 

@@ -3,7 +3,7 @@
 Lets the app's agents run commands on another computer of yours, over the app's own connection, while you allow it.
 
 - **Off by default, on only from the computer.** You turn access on from the computer itself (its Agent access
-  window, or `omp-app-device on` in any login of yours there, ssh too), with your own password, for up to two hours.
+  window, or `omp-app-device on` in any login of yours there, ssh too), with your own password, for up to eight hours.
   Any page of the app, the computer's tray icon or `omp-app-device off` turns it off. It also turns off by itself when
   the screen locks or the computer goes to sleep (read from logind with `gdbus`, part of GLib's tools). The app's
   server can never turn it on.
@@ -89,13 +89,27 @@ Include /run/user/<uid>/omp-app-access/ssh_config
 
 | | Desktop app | Command line |
 |---|---|---|
-| Turn on (asks your password) | Agent access panel → Turn on for 30 min, 1 h or 2 h | `omp-app-device on [--for <minutes>]` |
+| Turn on (asks your password) | Agent access panel → Turn on for 30 min, 1 h, 2 h, 4 h or 8 h | `omp-app-device on [--for <minutes>]` (default 120, at most 480) |
 | Turn off | Tray → Turn off, or the panel on any device | `omp-app-device off` |
 | More time (asks your password) | Panel → Extend by 15 min, 30 min or 1 h; tray → Extend 1 h | `omp-app-device extend [--for <minutes>]` |
 | Sudo for the agent account (asks your password) | Panel → Allow sudo for 5, 15 or 30 min; tray → 30 min | `omp-app-device sudo [--for <minutes>]` |
 | What runs now | The panel → Agent sessions on this computer | `omp-app-device watch` |
 | State, and what changed last time | The panel | `omp-app-device status` |
 | Reviewed what changed | The panel → Mark as reviewed | `omp-app-device acknowledge` |
+| Let a chat in (asks your password) | The chat's request → Allow; or Give a chat access | `omp-app-device allow-chat <chat id>` (`status` lists requests) |
+| Share a folder (asks your password) | The folder's request → Allow; or Share a folder | `omp-app-device allow-folder <id> [--write]` |
+| Turn a request down | Deny | `omp-app-device deny-chat <chat id>`, `deny-folder <id>` |
+| Take a chat's access, or a folder, away | Remove beside it | `omp-app-device remove-chat <chat id>`, `remove-folder <path>` |
+
+**Chats and folders.** Only chats the person allowed reach the computer: a chat's first `ssh` is refused, the person is
+asked (a notification that stays, and the panel), and their answer goes into that chat as an `agent-access` notice
+through the server, so the chat never waits or retries. The agent account cannot read the person's files; an agent asks
+for a folder with `omp-app-device ask-folder '~/<folder>' [--write] --why '<one line>'`, which prints a folder shared
+already (exit 0) and otherwise exits 3 at once, the answer coming as a notice too. A shared folder is mounted under
+`/run/omp-app-device/shared/` while access is on. Every request, session, notification and password dialog names the
+chat it comes from (the name the server gave the session); a shared folder records the chat that asked, or that the
+person shared it. The allowed chats are in `chat-grants.json` in the agent's data folder; the shared folders in
+`/var/lib/omp-app-device` (the guard's state folder).
 
 ## Remove
 

@@ -2,15 +2,19 @@
 
 How releases are made, how to build and check the packages yourself, and what an installed app does when a new version comes out. For installing a release, see the [README](../README.md). For the tests a release runs, see [testing.md](testing.md).
 
-A release is two Debian packages of the same version and one checksum file:
+A release holds:
 
 | File | What it is |
 |---|---|
 | `omp-app_<version>_amd64.deb` | The terminal command, `omp-app`, with its user service |
-| `omp-app-desktop_<version>_amd64.deb` | The "omp app" window with its bundled server |
-| `SHA256SUMS` | The SHA-256 of both packages, in the format `sha256sum -c` reads |
+| `omp-app-desktop_<version>_amd64.deb` | The "omp app" window with its bundled server, for Linux |
+| `omp-app-desktop_<version>_aarch64.dmg`, `omp-app-desktop_<version>_x64-setup.exe` | The window for macOS (Apple silicon) and Windows (x64), each with a `.sha256` file; added after the release is published |
+| `omp-app-chrome_<version>.zip` | The Chrome and Edge side panel, to load unpacked |
+| `omp-app-zen_<version>_unsigned.zip`, `omp-app-zen_<version>.xpi` | The Firefox and Zen sidebar; the `.xpi` only when Mozilla signed it ([apps/zen](../apps/zen/README.md)) |
+| `omp-app-vscode_<version>.vsix` | The VS Code panel |
+| `SHA256SUMS` | The SHA-256 of the Linux packages and the extensions, in the format `sha256sum -c` reads |
 
-Both packages hold their own chat host, built from the omp release the app pins, so neither depends on an omp installed on the computer.
+Every package and bundle holds its own chat host, built from the omp release the app pins, so none depends on an omp installed on the computer.
 
 ## The release workflow
 
@@ -38,9 +42,12 @@ It only ever builds `main`, never starts from a pull request, and has no credent
 3. Installs the libraries the window needs, Rust (stable) and a cache of Cargo's registry and build.
 4. Builds the desktop package with `packaging/build-desktop-deb.sh`, and smoke-tests it under a virtual display with `packaging/desktop-smoke-test.sh`.
 5. Copies the desktop package next to the other and adds its line to `SHA256SUMS`.
-6. Writes the release notes, then publishes.
+6. Builds the extensions: the Chrome and Edge panel (`bun run --cwd apps/zen build <version> --chrome`, zipped), the Firefox and Zen sidebar with Mozilla's checks (and Mozilla's signature when the repository has its key), and the VS Code panel (`vsce package`), each added to `SHA256SUMS`.
+7. Writes the release notes, then publishes.
 
-Nothing is published until every step before it has passed: when a smoke test fails, the run fails and the release does not exist. The last step creates the GitHub release `v<version>`, titled `omp app <version>`, with the two packages and `SHA256SUMS` attached, tagged on the commit that was built.
+Nothing is published until every step before it has passed: when a smoke test fails, the run fails and the release does not exist. The publish step creates the GitHub release `v<version>`, titled `omp app <version>`, with the files above attached, tagged on the commit that was built.
+
+**macOS and Windows.** Once the release is published, a second job (`desktop-other`) builds the window's bundle on GitHub's macOS and Windows runners from the released commit (`packaging/build-desktop-bundle.sh`), checks that each window starts its server (`packaging/smoke-desktop.ts`), and adds the bundle and its `.sha256` file to the release. A failure there leaves the release with its Linux files only.
 
 ### The version scheme
 
@@ -94,7 +101,9 @@ xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- \
 
 ## How an installed app gets an update
 
-The code has no updater: nothing in the server, the window or the packages checks for a new release or installs one, and the repository publishes no package archive. An update is a new release's packages, installed over the old ones (`sudo apt install ./<file>.deb`). What the code does around that:
+**From inside the app** (Settings → App → omp-app, `packages/server/src/ports/A0/app-updates.ts`): the server looks for the newest release on GitHub. **Update server** downloads the release's `omp-app` package into the app data folder (`updates/`), checks it against the release's `SHA256SUMS`, and runs the install and the restart in a unit of its own outside the service (`systemd-run --user`), since restarting the service ends every process in it. It needs the installed package running as the `omp-app` user service and `sudo` without a password; elsewhere the section gives the reason and the command to run. While omp's own update job has an omp waiting to be switched to, nothing installs. **Go back** installs the release before the one an update brought. In the desktop window, **Update this app** downloads the newer desktop package, checks it and installs it with `pkexec` (your password), then restarts the window and the agent-access program (`apps/desktop/src-tauri/src/update.rs`).
+
+**By hand,** an update is a new release's packages, installed over the old ones (`sudo apt install ./<file>.deb`). What the code does around either:
 
 - **The service.** The package's post-install script enables the user service, and the build script's comments say an upgrade keeps it enabled. No script restarts a running server. A server that is running when the package is replaced goes on running the old build until it is stopped and started again: at the next login, or with `systemctl --user restart omp-app`.
 - **Open pages.** A page asks the server whether it still serves the build the page is running: when its connection opens again (as after a restart), when the page is shown or focused, and every 10 minutes (`apps/ui/src/update.ts`). When the served page names another build, a banner says "The app was updated. Reload to use the new version." with a **Reload** button (`apps/ui/src/ConnectionBanner.tsx`).

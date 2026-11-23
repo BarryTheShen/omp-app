@@ -1,12 +1,14 @@
 # omp app
 
-A chat app for [omp](https://github.com/can1357/oh-my-pi), the coding agent: a desktop window for Linux and a web app for your other devices. omp stays the engine; this app is its interface.
+A chat app for [omp](https://github.com/can1357/oh-my-pi), the coding agent: a server and desktop window for Linux, the window for macOS and Windows too, a web app for your other devices, and panels for Firefox, Chrome, Edge and VS Code. omp stays the engine; this app is its interface.
+
+**Setting it up with an AI agent?** Point it at [AGENTS.md](AGENTS.md): installing for someone and working on the code, step by step.
 
 ![A chat in omp app: omp runs a project's tests, finds why three fail, changes one line and runs them again](docs/images/chat.png)
 
 ## What it does
 
-- **Workspaces of chats.** Chats open in tabs, and each tab splits into windows that you arrange by dragging. Closing a window leaves its chat running.
+- **Workspaces of chats.** Chats open in tabs, and each tab splits into windows that you arrange by dragging. Closing a window leaves its chat running. Runs of tool calls fold into one card, so a long turn stays readable.
 - **A message box that speaks omp.** `/` lists omp's commands, `@` mentions a file, `!` runs a shell command and `$` runs Python. Attach pictures and files, and while omp works, steer it, queue a follow-up, pause it or stop it.
 - **Models and roles.** A model menu with Favorites, Recent and each provider's models, a thinking-level menu, and omp's roles, each with its own model.
 - **Plan mode.** omp plans first and changes nothing until you approve the plan.
@@ -14,9 +16,12 @@ A chat app for [omp](https://github.com/can1357/oh-my-pi), the coding agent: a d
 - **A side panel** beside your chats: Usage, Agents (open the Agent Hub for a subagent's live log), Progress (goal, to-do list, plan mode), Jobs, Files, Ports and Browser.
 - **A browser for chats.** Choose the browser they use: omp's hidden one, a Chrome on the app's computer shown live in the panel, or your own browser through omp's relay.
 - **Usage limits.** See your accounts' usage and pace on the dashboard. Rules pause the chats you pick while a condition holds and continue them in turn afterwards, and a chat that a limit stopped continues by itself once the limit resets.
-- **Phone and iPad.** A layout for phones and touch screens, which you can add to the Home Screen of an iPhone or iPad.
+- **Phone and iPad.** A layout for phones and touch screens, which you can add to the Home Screen of an iPhone or iPad, with notifications when a chat waits for you or a reply ends.
 - **Your other devices,** at an HTTPS address that you serve the app at (Tailscale Serve, a reverse proxy, a tunnel). The server listens on this computer only; each device pairs once with a code or by being allowed from a paired device.
+- **Agent access to your other computers.** Chats can run commands on another computer of yours while you allow it there: only the chats you allow, as a separate account, with every command shown and kept ([docs/agent-access.md](docs/agent-access.md)).
+- **Panels in other apps.** The chat in Firefox's and Zen's sidebar, Chrome's and Edge's side panel, or VS Code's side bar, acting on the page or folder you have open.
 - **omp in the terminal on the same chats.** `omp-app tui` opens omp's own terminal app on the app's chats, so you can go on in either.
+- **Looks and updates.** Themes and styles in Settings → App → Look; Settings → App → omp-app updates the app from inside it.
 - **Guided tours and What's new.** Click-through tours of the basics, and a list of every update with the tours it brought.
 
 <table>
@@ -34,7 +39,7 @@ The screenshots show a made-up project, with omp on Claude Haiku 5.5.
 
 ## Install
 
-Releases are published on the [releases page](https://github.com/BarryTheShen/omp-app/releases) as two Debian packages of the same version, with one `SHA256SUMS` file:
+Releases are published on the [releases page](https://github.com/BarryTheShen/omp-app/releases). On Linux (amd64), two Debian packages of the same version, with one `SHA256SUMS` file:
 
 ```bash
 gh release download --repo BarryTheShen/omp-app --pattern '*.deb' --pattern SHA256SUMS   # both packages and their checksums
@@ -45,14 +50,17 @@ sudo apt install ./omp-app_*_amd64.deb           # the terminal command: then ru
 
 Both packages hold the omp release the app is built for, so omp needs no separate install. [docs/install.md](docs/install.md) covers requirements, the user service, updating and removing.
 
-Each release also carries the extensions that show the app's chat in other apps ([docs/integrations.md](docs/integrations.md)): `omp-app-zen_*` for Firefox and Zen ([apps/zen](apps/zen/README.md)), and `omp-app-vscode_*.vsix` for VS Code ([apps/vscode](apps/vscode/README.md)).
+On macOS (Apple silicon) and Windows (x64), the same release has the window: `omp-app-desktop_*_aarch64.dmg` and `omp-app-desktop_*_x64-setup.exe` ([docs/install.md](docs/install.md#can-i-use-it-on-macos-or-windows)).
+
+Each release also carries the extensions that show the app's chat in other apps ([docs/integrations.md](docs/integrations.md)): `omp-app-zen_*` for Firefox and Zen ([apps/zen](apps/zen/README.md)), `omp-app-chrome_*.zip` for Chrome and Edge, and `omp-app-vscode_*.vsix` for VS Code ([apps/vscode](apps/vscode/README.md)).
 
 ## Documentation
 
 | Page | What it covers |
 |---|---|
-| [docs/install.md](docs/install.md) | Requirements, installing, the user service, updating, uninstalling, and where the app keeps its files. |
-| [docs/devices.md](docs/devices.md) | Opening the app from a phone or another computer, pairing, the iPhone and iPad Home Screen app, and shared ports. |
+| [docs/install.md](docs/install.md) | Requirements, installing (Linux, and the window on macOS and Windows), the user service, updating, uninstalling, and where the app keeps its files. |
+| [docs/devices.md](docs/devices.md) | Opening the app from a phone or another computer, pairing, the iPhone and iPad Home Screen app, notifications, and shared ports. |
+| [docs/agent-access.md](docs/agent-access.md) | Letting chats run commands on another computer of yours, safely. |
 | [docs/using.md](docs/using.md) | Every part of the app, and its keys. |
 | [docs/configuration.md](docs/configuration.md) | Commands and flags, environment variables, folders and files, and the omp settings the app uses. |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | What each message means and what to do, and the debug log. |
@@ -62,14 +70,15 @@ Each release also carries the extensions that show the app's chat in other apps 
 | [docs/testing.md](docs/testing.md) | The tests and how to run them. |
 | [docs/releasing.md](docs/releasing.md) | How releases are built and published. |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Who can contribute, and the checks a change must pass. |
+| [AGENTS.md](AGENTS.md) | For AI coding agents: setting the app up for someone, and working on the code. |
 | [SECURITY.md](SECURITY.md) | What the app guards, and how to report a vulnerability. |
-| [packages/server](packages/server/README.md), [packages/client](packages/client/README.md), [packages/contracts](packages/contracts/README.md), [apps/ui](apps/ui/README.md), [apps/desktop](apps/desktop/README.md), [apps/web](apps/web/README.md) | One short page for each part of the code. |
+| [packages/server](packages/server/README.md), [packages/client](packages/client/README.md), [packages/contracts](packages/contracts/README.md), [packages/embed](packages/embed/README.md), [apps/ui](apps/ui/README.md), [apps/desktop](apps/desktop/README.md), [apps/device](apps/device/README.md), [apps/zen](apps/zen/README.md), [apps/vscode](apps/vscode/README.md), [apps/web](apps/web/README.md) | One short page for each part of the code. |
 
 ## Project status
 
-The app runs the omp release it pins, omp **18.18.5** (the `@oh-my-pi/pi-coding-agent` package in [`packages/server/package.json`](packages/server/package.json)), and no other. Features are switched on by the capabilities omp reports when a session starts, not by version numbers.
+The app runs the omp release it pins, omp **19.0.0** (the `@oh-my-pi/pi-coding-agent` package in [`packages/server/package.json`](packages/server/package.json)), and no other. Features are switched on by the capabilities omp reports when a session starts, not by version numbers.
 
-It is a personal project, used and tested on Ubuntu (GNOME) and, as a Home Screen app over [Tailscale](https://tailscale.com), on iPhone and iPad. Issues and pull requests are open to collaborators only. Report a security problem through [SECURITY.md](SECURITY.md), not in an issue.
+It is a personal project, used and tested on Ubuntu (GNOME) and, as a Home Screen app over [Tailscale](https://tailscale.com), on iPhone and iPad; the macOS and Windows windows are built and started on every release but not used day to day. Issues and pull requests are open to collaborators only. Report a security problem through [SECURITY.md](SECURITY.md), not in an issue.
 
 ## License
 
