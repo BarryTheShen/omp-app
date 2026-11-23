@@ -67,8 +67,17 @@ bun run dev            # builds the UI and starts the server: open the printed h
 ```
 
 `bun run dev` uses the real `~/.omp/agent` of the account that runs it (chats, settings, sign-ins). To keep a trial run
-apart, give it a throwaway folder: `PI_CODING_AGENT_DIR=$(mktemp -d) OMP_APP_PORT=4399 bun run dev`. More:
-[docs/development.md](docs/development.md).
+apart, give it a throwaway folder: `PI_CODING_AGENT_DIR=$(mktemp -d) OMP_APP_PORT=4399 bun run dev`. **Inside an omp
+app chat**, the shell also inherits that app's own settings, and `OMP_APP_DATA_DIR` wins over `PI_CODING_AGENT_DIR`, so
+the trial would use the person's real app data and agent access. Unset them first:
+
+```bash
+env -u OMP_APP_DATA_DIR -u OMP_APP_DEVICE_ACCESS -u OMP_APP_REMOTE_ORIGIN -u OMP_APP_FRAME_ANCESTORS \
+  -u OMP_APP_ACCESS_SSH_CONFIG -u OMP_APP_DETACHED_HOSTS -u OMP_APP_HOST_SOCKET \
+  PI_CODING_AGENT_DIR="$(mktemp -d)" OMP_APP_PORT=4399 bun run dev
+```
+
+More: [docs/development.md](docs/development.md).
 
 ### Where things are
 

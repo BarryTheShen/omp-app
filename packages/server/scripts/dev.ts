@@ -844,6 +844,13 @@ export async function createCompositionServer(
           onActivity: (activity) => deviceAccessPublishers(publish).activity(activity),
           notify: (threadId, text) => accessNotice(threadId, text),
           logger,
+        }).catch((error: unknown) => {
+          // Another server of this account runs agent access in the same runtime folder: it keeps it, and this one
+          // runs without (a second server must not take or remove the first one's socket and ssh files).
+          logger?.warn("device_access.unavailable", {
+            reason: error instanceof Error ? error.message : String(error),
+          });
+          return undefined;
         })
       : undefined;
   // Chats started from now on are told which computers they reach and how (the chat host reads this file).

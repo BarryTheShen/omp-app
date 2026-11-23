@@ -22,6 +22,23 @@ const Hello = z.strictObject({
 /** The longest first line the client may send. */
 const HELLO_MAX = 512;
 
+/**
+ * Whether a server listens at `path` now: one that answers is another omp-app server's (two servers of one account
+ * share the runtime folder: a second one started from a checkout, say), which must keep it.
+ */
+export async function socketAnswers(path: string): Promise<boolean> {
+  try {
+    const socket = await Promise.race([
+      Bun.connect({ unix: path, socket: { data() {} } }),
+      Bun.sleep(1_000).then(() => null),
+    ]);
+    socket?.end();
+    return socket !== null;
+  } catch {
+    return false;
+  }
+}
+
 interface ProxyData {
   head: Uint8Array;
   handle: StreamHandle | null;

@@ -90,4 +90,33 @@ describe("enrolling a machine (#20)", () => {
       expect(parseLauncherArgs(bad)).toMatchObject({ ok: false });
     }
   });
+
+  test("a second server of the account (one started from a checkout) leaves the running server's agent access alone, and runs without it", async () => {
+    const { opened } = await access();
+    const runtime = join(folder ?? "", "runtime", "omp-app-access");
+    const socket = join(runtime, "proxy.sock");
+    const config = await Bun.file(join(runtime, "ssh_config")).text();
+    const second = await mkdtemp(join(tmpdir(), "omp-app-second-"));
+    try {
+      await expect(
+        openDeviceAccess({
+          appDataDir: second,
+          env: { XDG_RUNTIME_DIR: join(folder ?? "", "runtime") },
+          serverOrigin: "https://app.example",
+          desk: new PairingDesk(),
+          proxyCommand: ["omp-app", "device-ssh"],
+          threadOfScope: () => null,
+          onMachinesChanged: () => undefined,
+          onActivity: () => undefined,
+        }),
+      ).rejects.toThrow("another omp-app server of this account runs agent access");
+      // The first server's socket still answers, and its ssh files are as it wrote them.
+      const still = await Bun.connect({ unix: socket, socket: { data() {} } });
+      still.end();
+      expect(await Bun.file(join(runtime, "ssh_config")).text()).toBe(config);
+    } finally {
+      opened.stop();
+      await rm(second, { recursive: true, force: true });
+    }
+  });
 });

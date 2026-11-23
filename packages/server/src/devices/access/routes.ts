@@ -17,7 +17,7 @@ import type { PairingDesk } from "../pairing";
 import { ActivityLog } from "./activity";
 import { AccessHub } from "./hub";
 import { accessDataFolder, accessProxySocket, accessRuntimeFolder } from "./paths";
-import { listenAccessProxy } from "./proxy";
+import { listenAccessProxy, socketAnswers } from "./proxy";
 import { SshFiles } from "./ssh-files";
 import { AccessStore } from "./store";
 
@@ -58,6 +58,12 @@ export async function openDeviceAccess(options: {
 }): Promise<DeviceAccess> {
   const data = accessDataFolder(options.appDataDir);
   const runtime = accessRuntimeFolder(options.env, options.appDataDir);
+  // Another server of this account holds agent access in this folder: its socket and ssh files stay its own.
+  if (await socketAnswers(accessProxySocket(runtime))) {
+    throw new Error(
+      `another omp-app server of this account runs agent access in ${runtime}; this one runs without it`,
+    );
+  }
   const store = await AccessStore.open({
     folder: data,
     ...(options.logger === undefined ? {} : { logger: options.logger }),
