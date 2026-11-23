@@ -37,10 +37,12 @@ const service = (port: number, extra: Partial<ListeningService> = {}): Listening
 });
 
 /**
- * Ports the system hands out at random, for these tests: by default a range none of the tests' own servers get (Linux
- * hands theirs out of 32768–60999), so their ports count as picked unless a test names another range.
+ * Ports the system hands out at random, for these tests: by default a range none of the tests' own servers get, so
+ * their ports count as picked unless a test names another range. Below every system's own range for them (Linux hands
+ * them out of 32768–60999, Windows and macOS of 49152–65535): 61000–61999 lay inside the latter, and a Windows run whose
+ * server got a port there failed the shares tests.
  */
-const ELSEWHERE = { low: 61_000, high: 61_999 };
+const ELSEWHERE = { low: 2_000, high: 2_999 };
 
 /** A runtime over a listed set of services, a phone that is paired, the events it published, and its clock. */
 function runtime(

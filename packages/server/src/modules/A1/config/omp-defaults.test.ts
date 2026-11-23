@@ -79,13 +79,25 @@ async function expectUnavailableDefaults(
   await expectNotFound(store, "model");
 }
 
+/**
+ * Removes a test's folder. A stand-in omp the store stopped may still be exiting, and on Windows a process that is
+ * still going keeps its folder locked (EACCES or EBUSY): try again for a few seconds rather than fail the test.
+ */
+async function removeFolder(directory: string): Promise<void> {
+  for (let tries = 0; ; tries += 1) {
+    try {
+      return await rm(directory, { recursive: true, force: true });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (tries >= 50 || !["EACCES", "EBUSY", "EPERM", "ENOTEMPTY"].includes(code ?? "")) throw error;
+      await Bun.sleep(100);
+    }
+  }
+}
+
 afterEach(async () => {
   for (const store of stores.splice(0)) store.dispose();
-  await Promise.all(
-    temporaryDirectories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  );
+  await Promise.all(temporaryDirectories.splice(0).map(removeFolder));
 });
 
 /** The stand-in answers only `config list --json`, as omp's registry read asks; anything else exits 64. */
@@ -304,6 +316,8 @@ if (readFileSync(${JSON.stringify(runs)}, "utf8").trim().split("\\n").length <= 
 ${print(answer)}`;
 }
 
+// Each test here starts real stand-in omp processes, which take seconds on a loaded machine or GitHub's macOS runner:
+// the budgets are hang guards, not waits (issue #1538; a macOS run at 5.01 s each on 2026-11-23).
 describe("omp ConfigStore defaults: a slow first run", () => {
   test("a first run that runs out of time is asked again; the defaults reach the store and subscribers", async () => {
     const root = await temporaryRoot();
@@ -338,7 +352,7 @@ describe("omp ConfigStore defaults: a slow first run", () => {
     expect(warnings).toEqual([expect.stringContaining("trying again in the background")]);
     expect(await fileLines(runs)).toHaveLength(2);
     expect(await leftoverDefaultsFolders(root)).toEqual([]);
-  });
+  }, 30_000);
   test("an empty retry keeps the registry unavailable and is asked after the first timeout", async () => {
     const root = await temporaryRoot();
     const runs = join(root, "runs-empty");
@@ -350,7 +364,7 @@ describe("omp ConfigStore defaults: a slow first run", () => {
     await untilOsEvent(async () => (await fileLines(runs)).length === 2);
     expect((await store.list({ folder: null })).availableKeys).toBeUndefined();
     await expectNotFound(store, "noDefault");
-  });
+  }, 30_000);
 
   // The test waits for the give-up warning itself. The budget is a hang guard, not a wait: the retry runs on real timers,
   // and in a loaded full run this test once took 5.5 s, past bun's 5 s default for every test (issue #1538).
@@ -393,5 +407,5 @@ await Bun.sleep(60_000);`,
     const retryPid = Number((await fileLines(pids))[1]);
     store.dispose();
     await untilOsEvent(() => !processAlive(retryPid));
-  });
+  }, 30_000);
 });
