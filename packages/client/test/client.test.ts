@@ -836,7 +836,12 @@ describe("createAppClient", () => {
       reconnect: { baseDelayMs: 0, maxDelayMs: 0 },
     });
     await eventually(() => client.connectionState === "open");
-    return { client, fire: () => due.splice(0).forEach((handler) => handler()) };
+    return {
+      client,
+      fire: () => {
+        for (const handler of due.splice(0)) handler();
+      },
+    };
   }
 
   const calls = (connection: FakeConnection, method: string) =>
@@ -1092,7 +1097,9 @@ describe("createAppClient", () => {
     await eventually(() => client.connectionState === "open");
     return {
       client,
-      fire: () => due.splice(0).forEach((handler) => handler()),
+      fire: () => {
+        for (const handler of due.splice(0)) handler();
+      },
       stallNext: () => {
         stall = true;
       },

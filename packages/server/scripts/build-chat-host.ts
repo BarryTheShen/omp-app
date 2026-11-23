@@ -18,7 +18,6 @@
  *   <that Bun> packages/server/scripts/build-chat-host.ts <outfile>
  */
 import { readdir, readFile, realpath } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { CHAT_HOST_BUN_VERSION } from "./chat-host-bun";
 import { COMPILE_TARGET, installNativeAddons } from "./native-addon";
@@ -34,7 +33,6 @@ if (Bun.version !== CHAT_HOST_BUN_VERSION) {
 const packageDir = dirname(
   dirname(Bun.resolveSync("@oh-my-pi/pi-coding-agent/cli", import.meta.dir)),
 );
-const fromOmp = createRequire(join(packageDir, "package.json"));
 const { createJsonParsePlugin } = (await import(
   join(packageDir, "scripts/json-parse-plugin.ts")
 )) as { createJsonParsePlugin: () => Bun.BunPlugin };

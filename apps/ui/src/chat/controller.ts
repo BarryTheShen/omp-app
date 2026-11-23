@@ -1326,7 +1326,7 @@ export class ChatController {
    * when another role has the same model; the chip changes in one step, as Ctrl+P's does. A server or a chat host from
    * before that switch gets the model and the level as two requests, and omp then tells the role from the model.
    */
-  async useRole(role: RoleModel): Promise<void> {
+  async applyRole(role: RoleModel): Promise<void> {
     try {
       const used = await this.#request("use_role_model", { role: role.role });
       if (used !== null)

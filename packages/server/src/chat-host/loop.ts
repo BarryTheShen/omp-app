@@ -104,6 +104,7 @@ import {
   setRoleFallbacks,
 } from "./model-hub";
 import { readModelMenu } from "./model-menu";
+import { NO_MODEL_HINT } from "./no-model";
 import type { LineWriter } from "./output";
 import { PlanMode } from "./plan";
 import {
@@ -112,7 +113,6 @@ import {
   type PromptTicket,
   startPrompt,
 } from "./prompt-results";
-import { NO_MODEL_HINT } from "./no-model";
 import { QuestionsController } from "./questions";
 import { readSearchEngines, removeSearchKey, setSearchKey, testSearch } from "./search-engines";
 import type { ChatSession } from "./session-factory";

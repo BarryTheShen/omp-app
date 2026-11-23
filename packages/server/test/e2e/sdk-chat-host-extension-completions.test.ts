@@ -70,11 +70,17 @@ describe("extensions' rows for the @ menu", () => {
           ],
         });
         // Nothing to offer: no rows.
-        expect(await chat.client.request("extension_completions", { text: "plain words", caret: 5 })).toEqual({
+        expect(
+          await chat.client.request("extension_completions", { text: "plain words", caret: 5 }),
+        ).toEqual({
           items: [],
         });
-        expect(await chat.client.request("extension_completions", { text: "@safety", caret: 7 })).toEqual({
-          items: [{ label: "Lab safety", detail: "note n2", text: "@[Lab safety](note:n2) ", caret: 23 }],
+        expect(
+          await chat.client.request("extension_completions", { text: "@safety", caret: 7 }),
+        ).toEqual({
+          items: [
+            { label: "Lab safety", detail: "note n2", text: "@[Lab safety](note:n2) ", caret: 23 },
+          ],
         });
       },
       60_000,
@@ -85,7 +91,9 @@ describe("extensions' rows for the @ menu", () => {
       async () => {
         const chat = await chats.start(command);
         await chat.client.hello;
-        expect(await chat.client.request("extension_completions", { text: "@lab", caret: 4 })).toEqual({ items: [] });
+        expect(
+          await chat.client.request("extension_completions", { text: "@lab", caret: 4 }),
+        ).toEqual({ items: [] });
       },
       60_000,
     );

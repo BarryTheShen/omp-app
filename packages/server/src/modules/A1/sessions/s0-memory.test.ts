@@ -123,33 +123,37 @@ const TEST_TIMEOUT_MS = 120_000;
 describe("SP-S0 bounded nested session readers", () => {
   // A full collection every few milliseconds is slow in a process with a large heap: in the whole package's run the
   // list takes about ten seconds, against under half a second when this file runs alone.
-  test("readSession does not load nested transcripts, while listSubagents preserves metadata", async () => {
-    const fixture = await makeFixture();
-    try {
-      const store = new SessionFileStore({
-        sessionsRoot: path.join(fixture.root, "sessions"),
-        home: fixture.root,
-        tempRoot: path.join(fixture.root, "tmp"),
-        leaseProbe: async () => "inactive" as const,
-      });
-      const read = await withPeakLive(() => store.readSession(fixture.chat));
-      expect(read.result.subagents).toEqual([]);
-      expect(read.peak).toBeLessThan(LIVE_LIMIT_BYTES);
+  test(
+    "readSession does not load nested transcripts, while listSubagents preserves metadata",
+    async () => {
+      const fixture = await makeFixture();
+      try {
+        const store = new SessionFileStore({
+          sessionsRoot: path.join(fixture.root, "sessions"),
+          home: fixture.root,
+          tempRoot: path.join(fixture.root, "tmp"),
+          leaseProbe: async () => "inactive" as const,
+        });
+        const read = await withPeakLive(() => store.readSession(fixture.chat));
+        expect(read.result.subagents).toEqual([]);
+        expect(read.peak).toBeLessThan(LIVE_LIMIT_BYTES);
 
-      const list = await withPeakLive(() => store.listSubagents(fixture.chat));
-      expect(list.result.transcripts).toHaveLength(NESTED_FILES);
-      expect(list.result.transcripts[0]).toMatchObject({
-        key: "Worker0",
-        agentId: "Worker0",
-        parent: null,
-        status: "stopped",
-        leafId: expect.any(String),
-        aborted: false,
-        agent: "task",
-      });
-      expect(list.peak).toBeLessThan(LIVE_LIMIT_BYTES);
-    } finally {
-      await rm(fixture.root, { recursive: true, force: true });
-    }
-  }, TEST_TIMEOUT_MS);
+        const list = await withPeakLive(() => store.listSubagents(fixture.chat));
+        expect(list.result.transcripts).toHaveLength(NESTED_FILES);
+        expect(list.result.transcripts[0]).toMatchObject({
+          key: "Worker0",
+          agentId: "Worker0",
+          parent: null,
+          status: "stopped",
+          leafId: expect.any(String),
+          aborted: false,
+          agent: "task",
+        });
+        expect(list.peak).toBeLessThan(LIVE_LIMIT_BYTES);
+      } finally {
+        await rm(fixture.root, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
 });

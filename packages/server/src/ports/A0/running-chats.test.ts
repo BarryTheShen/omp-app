@@ -91,7 +91,9 @@ function runtimeOver(
   return {
     runtime,
     published,
-    change: () => listeners.forEach((listener) => listener()),
+    change: () => {
+      for (const listener of listeners) listener();
+    },
     list: () => handlers.list(),
     stop,
   };

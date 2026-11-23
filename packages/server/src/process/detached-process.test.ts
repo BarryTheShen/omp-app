@@ -170,7 +170,7 @@ describe("adoptRunningHosts", () => {
 
   test("leaves a socket whose host says no hello (one another server holds)", async () => {
     const dir = await hostsDir();
-    const held = fakeHost(join(dir, "a.sock"), { silent: true });
+    fakeHost(join(dir, "a.sock"), { silent: true });
     const found = await adoptRunningHosts({
       hostsDir: dir,
       protocol: CHAT_HOST_PROTOCOL_VERSION,

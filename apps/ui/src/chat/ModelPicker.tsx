@@ -245,9 +245,9 @@ export function ModelPicker({
     onOpenChange(false);
     void controller.setModel(item).catch(onError);
   };
-  const useRole = (picked: RoleModel): void => {
+  const pickRole = (picked: RoleModel): void => {
     onOpenChange(false);
-    void controller.useRole(picked).catch(onError);
+    void controller.applyRole(picked).catch(onError);
   };
   const openPanel = (): void => {
     onOpenChange(false);
@@ -385,7 +385,7 @@ export function ModelPicker({
                     key={each.role}
                     value={`${ROLE_ROW}${each.role}`}
                     data-checked={each.role === role}
-                    onSelect={() => useRole(each)}
+                    onSelect={() => pickRole(each)}
                   >
                     <span className="w-16 shrink-0 truncate text-t2">{each.role}</span>
                     <span className="min-w-0 flex-1 truncate">{each.name}</span>

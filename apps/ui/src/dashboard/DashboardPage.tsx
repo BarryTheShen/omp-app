@@ -827,6 +827,7 @@ function ActivitySection({
           const reason = entry.reason === null ? "" : `: ${REASON_WORDS[entry.reason]}`;
           return (
             <li
+              // biome-ignore lint/suspicious/noArrayIndexKey: two entries can match in time, chat and action; the place tells them apart
               key={`${entry.at}-${entry.id}-${entry.action}-${index}`}
               className="flex flex-col border-b border-l2 py-1.5 last:border-b-0"
             >

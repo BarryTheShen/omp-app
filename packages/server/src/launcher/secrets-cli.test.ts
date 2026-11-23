@@ -40,7 +40,10 @@ function terminal(keys: string): KeyInput & { readonly raw: boolean[] } {
     setRawMode: (mode: boolean) => raw.push(mode),
     on: (_event, listener) => listeners.add(listener as (chunk: string) => void),
     off: (_event, listener) => listeners.delete(listener as (chunk: string) => void),
-    resume: () => queueMicrotask(() => [...listeners].forEach((listener) => listener(keys))),
+    resume: () =>
+      queueMicrotask(() => {
+        for (const listener of [...listeners]) listener(keys);
+      }),
     pause: () => undefined,
   };
 }

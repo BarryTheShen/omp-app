@@ -44,9 +44,7 @@ export function TodoList({ phases }: { readonly phases: TodoPhases }): ReactNode
                   aria-label={`${status.said}: ${task.content}`}
                 >
                   <status.Icon className={cn("mt-0.5 size-4 shrink-0", status.icon)} aria-hidden />
-                  <span className={cn("min-w-0", status.text)}>
-                    {task.content}
-                  </span>
+                  <span className={cn("min-w-0", status.text)}>{task.content}</span>
                 </li>
               );
             })}

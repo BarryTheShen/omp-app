@@ -263,7 +263,11 @@ describe("D2: hosts that outlive the server", () => {
       const turn = new Promise<void>((done) =>
         events.onEvent((payload) => isPromptResult(payload) && done()),
       );
-      await chat.request({ threadId: opened.threadId, method: "prompt", params: { text: "hello" } });
+      await chat.request({
+        threadId: opened.threadId,
+        method: "prompt",
+        params: { text: "hello" },
+      });
       await turn;
       const [socket] = await sockets();
       await stop(first);

@@ -54,6 +54,7 @@ export function ConnectionBanner({
   const [returns, setReturns] = useState(0);
   useEffect(() => onReturn(() => setReturns((count) => count + 1)), []);
   const reconnectingSince = useRef<number | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `returns` counts the page coming back; each return reads lastReturnAt() again
   useEffect(() => {
     if (!reconnecting) {
       reconnectingSince.current = null;
