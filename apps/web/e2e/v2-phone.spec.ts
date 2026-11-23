@@ -144,6 +144,61 @@ realTest.describe("new UI on a phone", () => {
   );
 
   realTest(
+    "longer text takes the box's whole width above ＋, ⚡ and Send, shows whole lines, and the box is one row again once empty",
+    async ({ realApp, browser }) => {
+      const { page, context } = await phone(realApp, browser);
+      const form = page.locator("[data-tour='message-box']");
+      const send = page.getByRole("button", { name: "Send" });
+      const words =
+        "A longer message that wraps onto a few lines so the box grows, with a path apps/ui/src/chat/Composer.tsx and more words after it.";
+      await box(page).fill(`${words} ${words} ${words}`);
+      const outer = await form.boundingBox();
+      const text = await box(page).boundingBox();
+      const sendBox = await send.boundingBox();
+      if (outer === null || text === null || sendBox === null)
+        throw new Error("the box is not drawn");
+      // Across the box (beside ＋, ⚡ and Send it had 220 of 390), and the buttons under it.
+      expect(text.width).toBeGreaterThanOrEqual(outer.width - 10);
+      expect(sendBox.y).toBeGreaterThanOrEqual(text.y + text.height);
+      // Six whole lines: the text's own height is six of its lines and its padding, so no line is cut at the edge.
+      const lines = await box(page).evaluate((area) => {
+        const style = getComputedStyle(area);
+        const padding =
+          Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+        return (area.clientHeight - padding) / Number.parseFloat(style.lineHeight);
+      });
+      expect(lines).toBeCloseTo(6, 1);
+
+      await box(page).fill("");
+      await expect
+        .poll(async () => (await form.boundingBox())?.height ?? 0)
+        .toBeLessThanOrEqual(52);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
+  realTest("your message takes no more room than its bubble", async ({ realApp, browser }) => {
+    const { page, context } = await phone(realApp, browser);
+    await box(page).fill("hello");
+    await page.getByRole("button", { name: "Send" }).tap();
+    await expect(page.getByText("pong")).toBeVisible({ timeout: 60_000 });
+    // The touch-and-hold menu's hidden trigger sits in the message's box: on a phone every button is 44 pt high, and in
+    // the flow it put a 44 pt gap under each of your messages.
+    const heights = await page
+      .locator(".tl-hold")
+      .first()
+      .evaluate((hold) => [
+        hold.getBoundingClientRect().height,
+        hold.querySelector(".tr-row--user")?.getBoundingClientRect().height ?? 0,
+      ]);
+    expect(heights[0]).toBeGreaterThan(0);
+    expect(Math.abs((heights[0] ?? 0) - (heights[1] ?? 0))).toBeLessThanOrEqual(1);
+    expect(realApp.problems).toEqual([]);
+    await context.close();
+  });
+
+  realTest(
     "⚡ sits beside Send, and a tap on the box brings nothing up between it and the keyboard",
     async ({ realApp, browser }) => {
       const { page, context } = await phone(realApp, browser);

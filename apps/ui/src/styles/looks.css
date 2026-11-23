@@ -250,3 +250,17 @@
 :root[data-style="roomy"] .composer-box {
   border-radius: 24px;
 }
+
+/*
+ * A phone: the workspace fills the screen in every style, as without one (App.tsx's `max-sm:` classes, which these
+ * rules would otherwise beat). No floating pane, hairline or shadow at the screen's edges; the style keeps its faces,
+ * colours and turns.
+ */
+@media (max-width: 639px) {
+  :root[data-style] [data-tour="workspace"] {
+    margin: 0;
+    border-width: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}

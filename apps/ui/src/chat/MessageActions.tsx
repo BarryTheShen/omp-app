@@ -60,13 +60,14 @@ export function MessageActions({
   if (phone) {
     return (
       // The hold opens the menu, not the phone's own text selection and its callout. `tl-hold`: the transcript's row
-      // rules reach the message through this box (index.css).
-      <div {...hold} className="tl-hold select-none [-webkit-touch-callout:none]">
+      // rules reach the message through this box (index.css). The menu's trigger is out of the flow: a phone's
+      // 44 px rule for buttons (index.css) made it a 44 px block under every message of yours.
+      <div {...hold} className="tl-hold relative select-none [-webkit-touch-callout:none]">
         {children}
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger
             aria-label="Message actions"
-            className="pointer-events-none block size-px opacity-0"
+            className="pointer-events-none absolute right-0 bottom-0 block size-px opacity-0"
           />
           <DropdownMenuContent>
             <DropdownMenuItem onClick={copy}>

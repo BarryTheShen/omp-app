@@ -19,6 +19,7 @@ import {
   type ReactNode,
   use,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
@@ -237,6 +238,24 @@ export const Composer = memo(function Composer({
   useEffect(() => {
     if (phone && modelPickerOpen) setPlusOpen(true);
   }, [phone, modelPickerOpen]);
+  /**
+   * A phone's text on a row of its own, across the box, with ＋, ⚡ and Send on the row under it: once the text needs a
+   * second line beside them (where it has some 220 pt), until the box is empty again. Not back to one row when it
+   * fits the wider line again, so the box cannot flip back and forth as it reflows.
+   */
+  const [tall, setTall] = useState(false);
+  useLayoutEffect(() => {
+    const area = boxRef.current;
+    if (!phone || text === "") {
+      setTall(false);
+      return;
+    }
+    if (tall || area === null) return;
+    const style = getComputedStyle(area);
+    const line = Number.parseFloat(style.lineHeight);
+    const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom);
+    if (area.scrollHeight - padding > line * 1.5) setTall(true);
+  }, [phone, text, tall]);
   // Paused by its usage pause (#2781 part 3): the paused row says at which limit and when the chat goes on.
   const pauseReason = useSyncExternalStore(controller.store.subscribe, () => {
     const usagePause = controller.store.getSnapshot().usagePause;
@@ -1135,8 +1154,13 @@ export const Composer = memo(function Composer({
           {pickerInput}
           {secretDialog}
           {phone && shellBadge !== false && <div className="flex px-3 pt-2">{shellBadge}</div>}
-          {/* ＋, the text, ⚡ and Send are a finger's 44 pt each: an even inset keeps them centred, the box no taller. */}
-          <div className={phone ? "flex items-end gap-1.5 p-[3px]" : undefined}>
+          {/* ＋, the text, ⚡ and Send are a finger's 44 pt each: an even inset keeps them centred, the box no taller.
+              Longer text takes a row of its own above them (`tall`). */}
+          <div
+            className={
+              phone ? `flex items-end gap-1.5 p-[3px]${tall ? " flex-wrap" : ""}` : undefined
+            }
+          >
             {phone && (
               <PlusMenu
                 open={plusOpen}
@@ -1174,7 +1198,9 @@ export const Composer = memo(function Composer({
             )}
             <textarea
               ref={boxRef}
-              className={`block w-full resize-none bg-transparent px-3.5 text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${phone ? "max-h-[6lh] min-h-[1lh] min-w-0 py-[11px] text-[length:var(--host-text-size,1rem)] leading-snug placeholder:truncate" : "max-h-[12lh] min-h-[2lh] pt-3 pb-1 text-[length:var(--host-text-size,0.875rem)] leading-normal"}`}
+              // Six lines at most on a phone, twelve on a computer, each plus its padding: a full box shows whole lines.
+              // A computer's also leaves its buttons in a short window (35% of it at most).
+              className={`block w-full resize-none bg-transparent text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${phone ? `max-h-[calc(6lh_+_22px)] min-h-[1lh] min-w-0 px-2 py-[11px] text-[length:var(--host-text-size,1rem)] leading-snug placeholder:truncate${tall ? " order-first basis-full" : ""}` : "max-h-[min(calc(12lh_+_1rem),35dvh)] min-h-[2lh] px-3.5 pt-3 pb-1 text-[length:var(--host-text-size,0.875rem)] leading-normal"}`}
               aria-label="Message"
               placeholder={
                 closed
@@ -1213,6 +1239,7 @@ export const Composer = memo(function Composer({
                 pasteFromWindow(event.currentTarget, text);
               }}
             />
+            {phone && tall && <span aria-hidden className="flex-1" />}
             {phone && (
               <QuickPromptsKey
                 open={panel}
