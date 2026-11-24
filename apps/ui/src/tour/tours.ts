@@ -3602,11 +3602,46 @@ const LITE_THEME_TOUR: Tour = {
   ],
 };
 
+const ONE_SIGN_TOUR: Tour = {
+  id: "one-sign-2026-11-24",
+  title: "Working, back online, Enter on an iPad",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "One sign that omp works",
+      text: "While omp works after a group of tool calls, the group's head spins, as it does while a call runs; <b>thinking…</b> shows only where nothing else does, as after your message.",
+      action: next,
+    },
+    {
+      target: null,
+      title: "Back online",
+      text: "A device back from being offline or asleep reads its chat list, pins, running chats and the dashboard's counts again, so a chat another device started meanwhile is there.",
+      action: next,
+    },
+    {
+      target: null,
+      title: "Enter on a tablet",
+      text: "On an iPad with its on-screen keyboard up, return adds a line and Send sends; typing on a hardware keyboard, Enter sends and Shift+Enter adds a line.",
+      action: next,
+      tabletOnly: true,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-24-one-sign",
+    when: "2026-11-24T03:00:00Z",
+    summary:
+      "One sign that omp works: a group of tool calls spins while omp works after it, in place of thinking… under it. A page that missed a reply (as a side panel did) shows it after 20 quiet seconds. A device back online reads its chat list again, so chats started elsewhere meanwhile show. On an iPad, Enter sends from a hardware keyboard and adds a line from the on-screen one. A chat a usage limit holds continues once you switch it to a model of a provider whose window is clear.",
+    tours: [ONE_SIGN_TOUR],
+  },
   {
     id: "2026-11-23-setup",
     when: "2026-11-24T02:00:00Z",

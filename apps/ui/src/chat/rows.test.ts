@@ -1,7 +1,7 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, test } from "vitest";
 import type { ActiveTool } from "../vendor/collab-web/lib/types";
-import { buildRows, groupToolRuns, leadTitle, type TranscriptRow } from "./rows";
+import { buildRows, groupToolRuns, leadTitle, type TranscriptRow, workingInGroup } from "./rows";
 
 const T = 1_790_000_000_000;
 
@@ -423,6 +423,68 @@ describe("groupToolRuns", () => {
       expect.stringMatching(/^assistant:/),
       "failure",
     ]);
+  });
+
+  describe("one sign that omp works", () => {
+    const calls = [
+      message("u1", { role: "user", content: "go", timestamp: T }),
+      reply("a1", 1, [call("c1")]),
+      result("r1", "c1", 2),
+      reply("a2", 3, [call("c2")]),
+      result("r2", "c2", 4),
+    ];
+    const signs = (rows: readonly TranscriptRow[]) =>
+      rows.flatMap((row) =>
+        row.kind === "working"
+          ? ["thinking…"]
+          : row.kind === "toolgroup" && row.busy
+            ? ["group spins"]
+            : [],
+      );
+    const stream = (content: unknown[]) => ({ role: "assistant", content, timestamp: T + 5 });
+
+    test("between steps after a group of calls, the group spins and no thinking… row is drawn under it", () => {
+      const rows = workingInGroup(
+        groupToolRuns(buildRows({ ...idle, working: true, entries: calls })),
+      );
+      expect(signs(rows)).toEqual(["group spins"]);
+      expect(shape(rows)).toEqual(["user:4", "group[c1,c2]"]);
+    });
+
+    test("a reply still being written that has only thinking so far is in the group, which spins", () => {
+      for (const thinking of ["", "weighing it"]) {
+        const rows = workingInGroup(
+          groupToolRuns(
+            buildRows({
+              ...idle,
+              working: true,
+              entries: calls,
+              stream: stream([{ type: "thinking", thinking }]) as never,
+            }),
+          ),
+        );
+        expect(signs(rows)).toEqual(["group spins"]);
+      }
+    });
+
+    test("where nothing else shows work, thinking… does; a reply's text being written is its own sign", () => {
+      const asked = [message("u1", { role: "user", content: "go", timestamp: T })];
+      expect(
+        signs(workingInGroup(groupToolRuns(buildRows({ ...idle, working: true, entries: asked })))),
+      ).toEqual(["thinking…"]);
+      const writing = workingInGroup(
+        groupToolRuns(
+          buildRows({
+            ...idle,
+            working: true,
+            entries: calls,
+            stream: stream([{ type: "thinking", thinking: "" }, said("The answer is")]) as never,
+          }),
+        ),
+      );
+      expect(signs(writing)).toEqual([]);
+      expect(signs(groupToolRuns(buildRows({ ...idle, entries: calls })))).toEqual([]);
+    });
   });
 });
 

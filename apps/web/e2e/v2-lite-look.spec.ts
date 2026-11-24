@@ -156,6 +156,8 @@ realTest.describe("new UI lite view in its host's look", () => {
       // Which light theme: the menu lists them.
       await page.getByRole("button", { name: "Theme" }).click();
       const lights = menu.getByRole("group").getByRole("menuitemradio");
+      // The menu draws after the click: its first theme is there before they are counted.
+      await expect(lights.first()).toBeVisible();
       expect(await lights.count()).toBeGreaterThan(1);
       await expect(
         menu.getByRole("menuitemradio", { name: "Tern Light", exact: true }),

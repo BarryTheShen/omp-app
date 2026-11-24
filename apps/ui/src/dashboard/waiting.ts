@@ -67,10 +67,16 @@ export function useDashboardWaiting(client: AppClient): number {
     const stopQuestions = follow(client.subscribe(QuestionsPort, "changed"), readQuestions);
     const stopTodos = follow(client.subscribe(TodosPort, "changed"), readTodos);
     const hourly = setInterval(readTodos, 3_600_000);
+    // Back from an outage: questions and to-dos changed meanwhile.
+    const stopOutage = client.onOutage(() => {
+      readQuestions();
+      readTodos();
+    });
     return () => {
       active = false;
       stopQuestions();
       stopTodos();
+      stopOutage();
       clearInterval(hourly);
     };
   }, [client]);

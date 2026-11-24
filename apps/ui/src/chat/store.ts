@@ -1282,10 +1282,33 @@ export class ChatStore {
     return "Working";
   }
 
+  /** When the frame that draws what came since was asked for (`performance.now()`); null while none waits. */
+  #frameAskedAt: number | null = null;
+
+  /**
+   * What waits to be drawn, for a page that checks it shows what came (`ChatController`'s quiet check): how long a frame
+   * has been asked for (null: none waits), whether the chat works by what came, drawn or not, and whether a message sent
+   * here still waits for omp to take it.
+   */
+  get pendingDraw(): {
+    readonly frameMs: number | null;
+    readonly working: boolean;
+    readonly sending: boolean;
+  } {
+    return {
+      frameMs:
+        this.#frameAskedAt === null ? null : Math.round(performance.now() - this.#frameAskedAt),
+      working: this.#working,
+      sending: this.#pending !== null,
+    };
+  }
+
   #publishSoon(): void {
     if (this.#cancelFrame !== null) return;
+    this.#frameAskedAt = performance.now();
     this.#cancelFrame = scheduleFrame(() => {
       this.#cancelFrame = null;
+      this.#frameAskedAt = null;
       this.#commit();
     });
   }
@@ -1294,6 +1317,7 @@ export class ChatStore {
     if (this.#cancelFrame !== null) {
       this.#cancelFrame();
       this.#cancelFrame = null;
+      this.#frameAskedAt = null;
     }
     this.#commit();
   }

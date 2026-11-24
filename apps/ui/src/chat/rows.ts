@@ -43,7 +43,13 @@ export type TranscriptRow =
   | { readonly kind: "working"; readonly key: string }
   | { readonly kind: "shell"; readonly key: string; readonly run: ShellRunView }
   | { readonly kind: "notice"; readonly key: string; readonly notice: ChatNotice }
-  | { readonly kind: "toolgroup"; readonly key: string; readonly items: readonly GroupItem[] };
+  | {
+      readonly kind: "toolgroup";
+      readonly key: string;
+      readonly items: readonly GroupItem[];
+      /** omp works on after the group's last call, nothing else showing it: the group's head says so. */
+      readonly busy?: true;
+    };
 
 /** One thing a group of tool calls holds, in order: a call, the thinking between calls, or a line leading into one. */
 export type GroupItem =
@@ -476,7 +482,10 @@ export function groupToolRuns(
     out.push(partRow(source, indices, made === 0 ? source.key : `${source.key}:p${made}`));
   };
   const used = new Set<string>();
-  const flushGroup = (): void => {
+  // The group holds part of a reply still being written (its thinking, a call): omp works in it.
+  let live = false;
+  /** `last`: nothing comes after the group, so a live one is where omp's work shows. */
+  const flushGroup = (last = false): void => {
     if (group.length === 0) return;
     const ids = group.flatMap((item) => (item.kind === "call" ? [item.id] : []));
     const known = ids.map((id) => keys.get(id)).find((key) => key !== undefined && !used.has(key));
@@ -485,8 +494,9 @@ export function groupToolRuns(
     while (used.has(key)) key = `${key}+`;
     used.add(key);
     for (const id of ids) keys.set(id, key);
-    out.push({ kind: "toolgroup", key, items: group });
+    out.push({ kind: "toolgroup", key, items: group, ...(last && live ? { busy: true } : {}) });
     group = [];
+    live = false;
   };
   pieces.forEach((piece, at) => {
     if ("whole" in piece) {
@@ -498,6 +508,7 @@ export function groupToolRuns(
     if (grouped.has(at) && piece.item !== null) {
       flushPart();
       group.push(piece.item);
+      if (piece.source.kind === "stream" && piece.source.pending) live = true;
       return;
     }
     flushGroup();
@@ -508,6 +519,18 @@ export function groupToolRuns(
     part.indices.push(piece.index);
   });
   flushPart();
-  flushGroup();
+  flushGroup(true);
   return out;
+}
+
+/**
+ * One sign that omp works: a group of tool calls last in the chat, while omp works between its steps, shows it in its
+ * own head (the spinner a running call gives it) in place of the "thinking…" row under it. The row stays where
+ * nothing else shows work (after your message, after a reply's text).
+ */
+export function workingInGroup(rows: readonly TranscriptRow[]): readonly TranscriptRow[] {
+  const at = rows.findIndex((row) => row.kind === "working");
+  const before = at > 0 ? rows[at - 1] : undefined;
+  if (before?.kind !== "toolgroup") return rows;
+  return [...rows.slice(0, at - 1), { ...before, busy: true }, ...rows.slice(at + 1)];
 }

@@ -58,12 +58,15 @@ export function ToolGroup({
   results,
   active,
   host,
+  busy = false,
 }: {
   readonly groupKey: string;
   readonly items: readonly GroupItem[];
   readonly results: ReadonlyMap<string, ToolResultMessage>;
   readonly active: ReadonlyMap<string, ActiveTool>;
   readonly host: ToolRenderHost | undefined;
+  /** omp works on after the group's last call (`workingInGroup`): the head spins as while a call runs. */
+  readonly busy?: boolean;
 }): ReactNode {
   const fold = useContext(FoldContext).tools;
   const [open, setOpen] = useState(opened.has(groupKey) || (fold.epoch > 0 && fold.open));
@@ -81,7 +84,7 @@ export function ToolGroup({
   );
   const failed = calls.filter((call) => results.get(call.id)?.isError === true).length;
   const now = running.at(-1);
-  const status = now !== undefined ? "run" : failed > 0 ? "err" : "ok";
+  const status = now !== undefined || busy ? "run" : failed > 0 ? "err" : "ok";
   // The model's last lead-in ("Checking the queue:") says what the group is doing: its title, as plain words.
   const lead = items.findLast((item) => item.kind === "lead");
   const title = lead?.kind === "lead" ? leadTitle(lead.text) : null;

@@ -170,6 +170,22 @@ function endedAgent(transcript: SubagentTranscript): SubagentSnapshot[] {
   ];
 }
 
+/** How long a chat shown working may hear no event before the page asks omp whether its turn still runs. */
+const QUIET_MS = 20_000;
+/** How often the quiet check looks. */
+const QUIET_EVERY_MS = 5_000;
+
+/** Whether the page's frames run: an animation frame comes within a second (a page whose frames stopped draws nothing). */
+function framesRun(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), 1_000);
+    requestAnimationFrame(() => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
+}
+
 /**
  * One open chat: its store, its chat host and its event stream. Opening paints the newest entries of the session file
  * before omp is up, then starts or joins the chat's host and follows its events, asking for streaming deltas.
@@ -254,6 +270,13 @@ export class ChatController {
   #replayBytes = 0;
   /** The replay held a turn's end: its turn may be newer than the file's window (see `#open`). */
   #replayEndedTurn = false;
+  /** When the last live event came (`Date.now()`), how many came, and of which kind the last was: the quiet check's. */
+  #lastEventAt = Date.now();
+  #liveEvents = 0;
+  #lastEventKind = "none";
+  /** The quiet check's timer while the chat is live (`#checkQuiet`), and whether a check is on its way. */
+  #quietTimer: ReturnType<typeof setInterval> | undefined;
+  #checkingQuiet = false;
   #commands: Promise<readonly ChatHostCommand[]> | null = null;
   /** The roles Ctrl+P walks, in omp's `cycleOrder`, as last read; empty until read. */
   #roleOrder: readonly string[] = [];
@@ -549,6 +572,9 @@ export class ChatController {
       return;
     }
     this.#live = true;
+    this.#quietTimer ??= setInterval(() => {
+      this.#checkQuiet().catch(() => undefined);
+    }, QUIET_EVERY_MS);
     this.#mark("subscribed_ms");
     // A turn that ended after the file's window was read came in the replay with no omp entry ids: the window is read
     // once more for it. Turns the window held already need nothing (#2768). A long chat's history is gone from the
@@ -813,6 +839,59 @@ export class ChatController {
         supported: ["chat-open", ...clientTags()],
       })
       .catch(() => undefined);
+  }
+
+  /**
+   * A chat shown working that has heard nothing for `QUIET_MS` asks omp whether its turn still runs. One that ended
+   * meanwhile was missed by this page: a Zen side panel kept "thinking…" after the reply had come in every other window,
+   * with no error anywhere and the link open. The page logs what it had (a `trace` line tagged `stalled`: the events it
+   * heard, the last one's kind, a frame waiting to draw, whether frames run at all, its visibility and focus) and reads
+   * the chat again, so the reply shows. A turn that still runs (a long tool) is checked again after another quiet spell.
+   */
+  async #checkQuiet(): Promise<void> {
+    if (this.#disposed || !this.#live || this.#checkingQuiet) return;
+    if (!this.store.getSnapshot().working) return;
+    const quietMs = Date.now() - this.#lastEventAt;
+    if (quietMs < QUIET_MS) return;
+    this.#checkingQuiet = true;
+    try {
+      const drawn = this.store.pendingDraw;
+      const frames = await framesRun();
+      const state = await this.#request("get_state", {});
+      if (this.#disposed) return;
+      if (
+        state.isStreaming !== false ||
+        state.queuedMessageCount > 0 ||
+        state.pausedAt !== undefined
+      ) {
+        this.#lastEventAt = Date.now();
+        return;
+      }
+      void this.client
+        .port(AppPort)
+        .reportClientTrace({
+          marks: {
+            quiet_ms: quietMs,
+            live_events: this.#liveEvents,
+            live_turns: this.#liveTurns,
+            frame_waiting_ms: drawn.frameMs ?? -1,
+            sending: drawn.sending ? 1 : 0,
+            frames_run: frames ? 1 : 0,
+            store_working: drawn.working ? 1 : 0,
+            hidden: document.visibilityState === "hidden" ? 1 : 0,
+            focused: document.hasFocus() ? 1 : 0,
+            framed: window.self === window.top ? 0 : 1,
+          },
+          gaps: [],
+          supported: ["stalled", `last-${this.#lastEventKind}`, ...clientTags()],
+        })
+        .catch(() => undefined);
+      this.store.setState(state, this.store.activityMark);
+      this.#refreshWindow();
+      this.#lastEventAt = Date.now();
+    } finally {
+      this.#checkingQuiet = false;
+    }
   }
 
   /** Plan mode switches so far: an answer about plan mode counts only while no later switch is on its way. */
@@ -1869,6 +1948,10 @@ export class ChatController {
     if (!this.#live) {
       this.#replayEvents += 1;
       this.#replayBytes += JSON.stringify(payload).length;
+    } else {
+      this.#lastEventAt = Date.now();
+      this.#liveEvents += 1;
+      this.#lastEventKind = payload.kind === "event" ? payload.event.type : payload.kind;
     }
     if (payload.kind === "moved") {
       this.#threadId = payload.threadId;
@@ -1998,6 +2081,7 @@ export class ChatController {
 
   async dispose(): Promise<void> {
     this.#disposed = true;
+    clearInterval(this.#quietTimer);
     this.#openFrames?.stop();
     this.#stopReopenWait?.();
     this.#stopReopenWait = undefined;

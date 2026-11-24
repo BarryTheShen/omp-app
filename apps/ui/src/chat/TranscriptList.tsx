@@ -35,7 +35,7 @@ import type { ToolRenderHost } from "../vendor/collab-web/tool-render/types";
 import { FailureRow } from "./FailureRow";
 import { useGroupTools } from "./groupTools";
 import { answersNotice, MessageActions, userText } from "./MessageActions";
-import { buildRows, groupToolRuns, type TranscriptRow, toolResults } from "./rows";
+import { buildRows, groupToolRuns, type TranscriptRow, toolResults, workingInGroup } from "./rows";
 import { NoticeRow, ShellBlock } from "./ShellBlock";
 import type { ChatSnapshot } from "./store";
 import { ToolGroup } from "./ToolGroup";
@@ -639,7 +639,7 @@ export function TranscriptList({
       notices,
       hasOlder,
     });
-    return grouping ? groupToolRuns(plain, groupKeys) : plain;
+    return grouping ? workingInGroup(groupToolRuns(plain, groupKeys)) : plain;
   }, [
     entries,
     stream,
@@ -1193,6 +1193,7 @@ function RowView({
             results={results}
             active={active}
             host={host}
+            busy={row.busy === true}
           />
         </Row>
       );

@@ -33,9 +33,12 @@ export function useRunningChats(client: AppClient): readonly RunningChat[] {
     };
     read();
     const stop = follow(client.subscribe(RunningChatsPort, "changed"), read);
+    // Back from an outage: what started or stopped meanwhile.
+    const stopOutage = client.onOutage(read);
     return () => {
       active = false;
       stop();
+      stopOutage();
     };
   }, [client]);
   return chats;

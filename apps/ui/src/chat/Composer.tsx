@@ -44,6 +44,7 @@ import { PlanChip } from "../plan/PlanChip";
 import { AddSecretDialog } from "../secrets/AddSecretDialog";
 import { useSidewaysRow } from "../sidewaysRow";
 import { TodoPill } from "../todos/TodoPill";
+import { onScreenKeyboard } from "../viewport";
 import { type AttachedFile, MAX_FILE_BYTES, pastesCopiedFiles } from "./attachedFiles";
 import { type Attachment, readImages } from "./attachments";
 import { type BoxToken, keepWhole, snapSelection, tokensIn } from "./boxTokens";
@@ -147,7 +148,8 @@ const asAttachment = (image: ChatHostImage, index: number): Attachment => ({
  * commands and `@` lists the folder's files; `!` and `$` run bash and Python (doubled, out of the model's context).
  * Files pasted, dropped or picked with the paperclip go with the next message: pictures to the model, any other file
  * uploaded to the chat's own folder and named in the message (#2830). The text is kept as it is typed (`drafts.ts`), and
- * only the text that was sent leaves the box. On a phone the return key adds a line, and the button sends (or, while omp
+ * only the text that was sent leaves the box. On a phone, and on a tablet while its on-screen keyboard is up, the return
+ * key adds a line, and the button sends (or, while omp
  * works, queues what is typed); ＋ holds the box's settings (`PlusMenu`) and ⚡ beside Send the quick prompts
  * (`QuickPromptsKey`). Nothing comes up between the box and the phone's keyboard: the keyboard has `/`, `@` and `!`.
  */
@@ -854,8 +856,10 @@ export const Composer = memo(function Composer({
       }
     }
     if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
-    // A phone's keyboard has no Ctrl or Shift for a new line: its return key adds one, and the Send button sends.
-    if (phone && !modified) return;
+    // An on-screen keyboard has no Ctrl or Shift for a new line: its return key adds one, and the Send button sends. A
+    // phone has one always; a tablet while its on-screen keyboard is up (an iPad typing on a hardware keyboard sends on
+    // Enter, which has Shift for a new line).
+    if ((phone || onScreenKeyboard()) && !modified) return;
     event.preventDefault();
     send(modified ? "followUp" : "auto");
   };

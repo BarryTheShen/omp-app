@@ -1,4 +1,24 @@
 /**
+ * The shortest on-screen keyboard: a touch screen's software keyboard takes at least this much of the visual viewport,
+ * the shortcut bar iPadOS shows over a page while a hardware keyboard types takes less.
+ */
+const KEYBOARD_MIN_PX = 150;
+
+/**
+ * Whether a touch screen's on-screen keyboard is up now: the visual viewport is shorter than the page by at least a
+ * keyboard (iOS lays the keyboard over the page; see `followVisualViewport`), not zoomed. An iPad typing on a hardware
+ * keyboard has none, so its Enter can send as a computer's does.
+ */
+export function onScreenKeyboard(
+  viewport: VisualViewport | null | undefined = window.visualViewport,
+  coarse = window.matchMedia("(pointer: coarse)").matches,
+): boolean {
+  if (!coarse || viewport === null || viewport === undefined) return false;
+  if (Math.abs(viewport.scale - 1) > 0.01) return false;
+  return document.documentElement.clientHeight - viewport.height >= KEYBOARD_MIN_PX;
+}
+
+/**
  * Keeps the page the height of what is visible while an on-screen keyboard covers part of it. On iOS the keyboard
  * overlays the page instead of shrinking it (WebKit has no `interactive-widget`, bug 259770): only the visual viewport
  * gets shorter, and the message box at the foot of the page stays under the keyboard. So the page takes the visual

@@ -141,6 +141,10 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
     void read().catch(() => undefined);
     reread.current = read;
     const stops = [
+      // Back from an outage (a computer asleep, a phone in the background): events missed meanwhile may not all come
+      // again (a page that had none yet, too many, a restarted server), so the list is read again once the link's
+      // streams are back.
+      client.onOutage(() => soon()),
       follow(client.subscribe(SessionFileStore, "changed"), (change) => {
         if (change.folder === folder) soon();
       }),
@@ -202,9 +206,15 @@ export function useChatList(client: AppClient, folder: FolderPath): ChatList {
 
   useEffect(() => {
     void readPins().catch(() => undefined);
-    return follow(client.subscribe(SessionPinStore, "changed"), () => {
+    const stopPins = follow(client.subscribe(SessionPinStore, "changed"), () => {
       void readPins().catch(() => undefined);
     });
+    // Back from an outage: pins changed meanwhile, as the list's chats.
+    const stopOutage = client.onOutage(() => void readPins().catch(() => undefined));
+    return () => {
+      stopPins();
+      stopOutage();
+    };
   }, [client, readPins]);
 
   const setPinned = useCallback(
