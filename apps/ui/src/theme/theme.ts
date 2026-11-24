@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { lookChanged } from "../look/changes";
 import { PALETTES } from "./palettes";
 
 /** A look: a block of `src/styles/themes.css`, named by its id. */
@@ -85,6 +86,7 @@ export function setThemeChoice(next: ThemeChoice): void {
   if (theme !== undefined) write(MODE_KEY, theme.mode);
   choice = next;
   changed();
+  lookChanged();
 }
 
 /** Keeps `id` as the theme "system" uses for that theme's mode. */
@@ -93,6 +95,7 @@ export function setSystemTheme(id: string): void {
   if (theme === undefined) return;
   write(SYSTEM_KEYS[theme.mode], id);
   changed();
+  lookChanged();
 }
 
 /**
@@ -105,9 +108,40 @@ export function pickTheme(id: string): void {
   write(SYSTEM_KEYS[theme.mode], id);
   if (choice === "system") {
     changed();
+    lookChanged();
   } else {
     setThemeChoice(id);
   }
+}
+
+/** The theme part of the look (`look/sync.ts`): light, dark or the system's, and the theme each mode shows. */
+export interface ThemeLook {
+  readonly mode: "system" | "light" | "dark";
+  readonly light: string;
+  readonly dark: string;
+}
+
+/** The theme part of the look as this page has it. */
+export function readThemeLook(): ThemeLook {
+  const chosen = choice === "system" ? undefined : byId.get(choice);
+  const of = (mode: "light" | "dark"): string =>
+    chosen?.mode === mode ? chosen.id : systemTheme(mode).id;
+  return { mode: chosen?.mode ?? "system", light: of("light"), dark: of("dark") };
+}
+
+/** Takes the look for every device's theme part (V258): kept here and shown, not heard as a change made here. */
+export function writeThemeLook(look: Partial<ThemeLook>): void {
+  for (const mode of ["light", "dark"] as const) {
+    const id = look[mode];
+    if (id !== undefined && byId.get(id)?.mode === mode) write(SYSTEM_KEYS[mode], id);
+  }
+  // The app's own default when the look leaves it out: dark (`DEFAULT_CHOICE`).
+  const mode = look.mode ?? "dark";
+  const next = mode === "system" ? "system" : systemTheme(mode).id;
+  write(CHOICE_KEY, next);
+  if (mode !== "system") write(MODE_KEY, mode);
+  choice = next;
+  changed();
 }
 
 /** What the one-click switch and a phone's menu offer: follow the system, or the kept light or dark theme. */

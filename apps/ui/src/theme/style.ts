@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { lookChanged } from "../look/changes";
 
 /**
  * The app's style: how it is drawn apart from its colours (`styles/looks.css`). Kept in this browser like the theme;
@@ -45,7 +46,8 @@ function apply(id: string): void {
   else document.documentElement.dataset.style = id;
 }
 
-export function setStyle(id: string): void {
+/** Sets the style; `fromLook`: the look for every device brought it (`look/sync.ts`), not a change made here. */
+export function setStyle(id: string, fromLook = false): void {
   if (!STYLES.some((style) => style.id === id)) return;
   try {
     localStorage.setItem(KEY, id);
@@ -54,7 +56,11 @@ export function setStyle(id: string): void {
   }
   apply(id);
   for (const listener of listeners) listener();
+  if (!fromLook) lookChanged();
 }
+
+/** The style as this browser keeps it. */
+export const styleNow = (): string => read();
 
 /** The style in force, kept current. */
 export function useStyle(): string {

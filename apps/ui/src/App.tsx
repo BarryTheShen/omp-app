@@ -51,6 +51,7 @@ import { embed } from "./lite/embed";
 import { LiteShell } from "./lite/LiteShell";
 import { isLiteView } from "./lite/lite";
 import { loadable } from "./loadable";
+import { startLookSync } from "./look/sync";
 import { setPageErrorSink } from "./pageErrors";
 import { reloadPage, traceReloads } from "./pageReload";
 import { PairingScreen } from "./pairing/PairingScreen";
@@ -290,6 +291,8 @@ function Shell({
   // A link that stopped answering shows as such and is opened again (#2789).
   useEffect(() => watchLink(client), [client]);
   useEffect(() => watchStuckLink(client), [client]);
+  // The look for every device or this one (V258), kept in step with the server.
+  useEffect(() => startLookSync(client), [client]);
   // How smoothly this page scrolls, measured on a sample of scrolls and kept in the server's debug log.
   useEffect(
     () =>

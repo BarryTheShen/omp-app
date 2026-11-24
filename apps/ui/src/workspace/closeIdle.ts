@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { lookChanged } from "../look/changes";
 
 /**
  * Settings → App → Workspaces → Close workspaces not used for: how long a workspace may stay out of front before it
@@ -30,7 +31,8 @@ function read(): number | null {
   }
 }
 
-export function setCloseAfter(hours: number | null): void {
+/** Sets the hours; `fromLook`: the look for every device brought it (`look/sync.ts`), not a change made here. */
+export function setCloseAfter(hours: number | null, fromLook = false): void {
   unkept = hours;
   try {
     if (hours === DEFAULT_CLOSE_AFTER) localStorage.removeItem(KEY);
@@ -39,7 +41,11 @@ export function setCloseAfter(hours: number | null): void {
     // No storage: `unkept` holds the choice.
   }
   for (const listener of listeners) listener();
+  if (!fromLook) lookChanged();
 }
+
+/** The hours as this browser keeps them; null never. */
+export const closeAfterNow = (): number | null => read();
 
 /** How many hours a workspace may go unused before it closes; null never. Kept current. */
 export function useCloseAfter(): number | null {

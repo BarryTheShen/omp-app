@@ -49,6 +49,7 @@ import {
   startStatsSampler,
 } from "../src/logging";
 import { createProviderAccountStore } from "../src/modules/A1/accounts";
+import { AppLookStoreService } from "../src/modules/A1/app-look";
 import { AttachmentStoreService } from "../src/modules/A1/attachments";
 import { BackgroundJobStopStoreService } from "../src/modules/A1/background-jobs";
 import { CheckpointStoreService } from "../src/modules/A1/checkpoints";
@@ -700,6 +701,7 @@ export async function createCompositionServer(
     watchRegistry: fileWatch,
   });
   const modelPreferenceStore = new ModelPreferenceStoreService({ appDataDir });
+  const appLookStore = new AppLookStoreService({ appDataDir });
   const secretStore = new SecretStoreService({
     agentDir,
     hideSecrets: hideSecretsThrough(configStore),
@@ -790,6 +792,7 @@ export async function createCompositionServer(
     backgroundJobStopStore,
     sessionPinStore,
     modelPreferenceStore,
+    appLookStore,
     secretStore,
     providerAccountStore,
     usageLimitStore,

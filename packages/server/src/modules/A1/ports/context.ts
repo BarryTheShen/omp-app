@@ -1,6 +1,7 @@
 import type { SessionFilePath, ThreadId, UsagePauseHold } from "@omp-app/contracts";
 import type { Logger } from "../../../logging";
 import type { ProviderAccountStoreService } from "../accounts";
+import type { AppLookStoreService } from "../app-look";
 import type { AttachmentStoreService } from "../attachments";
 import type { BackgroundJobStopStoreService } from "../background-jobs";
 import type { CheckpointStoreService } from "../checkpoints";
@@ -36,6 +37,8 @@ export interface A1PortContext {
   readonly sessionPinStore: SessionPinStoreService;
   /** The model menu's stars and hidden models, in the app's data folder. */
   readonly modelPreferenceStore: ModelPreferenceStoreService;
+  /** The app's look for every device (V258), in the app's data folder. */
+  readonly appLookStore: AppLookStoreService;
   /** omp's secrets for Hide Secrets, its `<agent folder>/secrets.yml`. */
   readonly secretStore: SecretStoreService;
   readonly providerAccountStore: ProviderAccountStoreService;

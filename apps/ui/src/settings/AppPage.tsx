@@ -13,6 +13,7 @@ import { ThemeSwitch } from "../theme/ThemeSwitch";
 import { AppVersionSection } from "./AppVersionSection";
 import { DebugLog } from "./DebugLog";
 import { Devices } from "./Devices";
+import { LookScopeSwitch } from "./LookScope";
 import { OmpSection } from "./OmpSection";
 import { QuickPromptsSection } from "./QuickPromptsSection";
 import { SearchSection } from "./SearchSection";
@@ -60,6 +61,7 @@ export function AppPage({
         </button>
       )}
       <h3 className="mt-6 text-xs font-medium text-t3">Look</h3>
+      <LookScopeSwitch />
       <div className="flex items-center gap-4 py-3">
         <div className="min-w-0 flex-1">
           <p className="text-sm text-t1">Theme</p>

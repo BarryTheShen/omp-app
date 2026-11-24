@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { lookChanged } from "../look/changes";
 
 /**
  * Settings → App → Look → Group tool calls: whether a run of tool calls is drawn as one card (`groupToolRuns`). On
@@ -17,7 +18,8 @@ function read(): boolean {
   }
 }
 
-export function setGroupTools(on: boolean): void {
+/** Groups runs or not; `fromLook`: the look for every device brought it (`look/sync.ts`), not a change made here. */
+export function setGroupTools(on: boolean, fromLook = false): void {
   unkept = on;
   try {
     if (on) localStorage.removeItem(KEY);
@@ -26,7 +28,11 @@ export function setGroupTools(on: boolean): void {
     // No storage: `unkept` holds the choice.
   }
   for (const listener of listeners) listener();
+  if (!fromLook) lookChanged();
 }
+
+/** Whether runs of tool calls are grouped, as this browser keeps it. */
+export const groupToolsNow = (): boolean => read();
 
 /** Whether runs of tool calls are grouped, kept current. */
 export function useGroupTools(): boolean {

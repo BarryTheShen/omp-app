@@ -170,6 +170,7 @@ A server that takes over a running host compares the host's `hello` with its own
   | `devices.json` | The paired devices: name, kind, times, and a SHA-256 of each key, never the key (mode 0600) |
   | `launch-links.json` | Digests of earlier launch tokens, so an old link reads as expired rather than never printed |
   | `model-preferences.json` | Favorite and hidden models |
+  | `app-look.json` | The look devices on Every device share (`app-look/store.ts`, V258) |
   | `todos.json` | The dashboard's to-do list and its last 200 changes (`todos/store.ts`) |
   | `questions.json` | Every chat's questions that wait, from the chats' `question_record` events, and a scan of the last 30 days' session files at the first start (`questions/open-questions.ts`) |
   | `siyuan-copy.json` | The to-do list's copy in SiYuan: the address, the page, the copy's block and the API token (mode 0600; `todos/siyuan-mirror.ts`) |

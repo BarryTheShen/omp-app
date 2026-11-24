@@ -63,6 +63,7 @@ export const DEFAULT_HOST_CAPABILITIES = [
   "host.mcp",
   "host.memory-store",
   "host.model-preferences",
+  "host.app-look",
   "host.plan-documents",
   "host.provider-accounts",
   "host.rules",

@@ -133,6 +133,7 @@ Undo: run `systemctl --user edit omp-app` again and delete the lines, or run `sy
 | `attachments/` | Pictures and files attached to drafts. Ones no draft refers to are removed after a day. |
 | `devices.json` | The paired devices: each one's name, kind and times, and a hash of its key, never the key. |
 | `model-preferences.json` | The models you starred and hid. |
+| `app-look.json` | The app's look for every device: light or dark, the themes, the style, tool groups and idle workspaces ([Using the app](using.md#settings)). |
 | `checkpoints/`, `plans/`, `background-job-stops/` | Per-chat records of checkpoints, plan documents and background jobs you stopped. |
 | `workspace-files/` | What the Files panel keeps: uploads in progress, and deleted files that can still be undone. |
 | `usage-readings.json`, `usage-resume.json`, `usage-pause.json` | The usage numbers behind the dashboard's pace, and the chats the app will continue or has paused at a usage limit. |

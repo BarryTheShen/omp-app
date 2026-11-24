@@ -1,4 +1,5 @@
 import type { PortRegistration } from "../../../registry/ports";
+import { createAppLookStoreRegistration } from "./app-look-store";
 import { createAttachmentStoreRegistration } from "./attachment-store";
 import { createCheckpointStoreRegistration } from "./checkpoint-store";
 import { createConfigStoreRegistration } from "./config-store";
@@ -41,6 +42,7 @@ export function createA1PortRegistrations(context: A1PortContext): readonly Port
     createOmpCommandGatewayRegistration(context),
     createSessionPinStoreRegistration(context),
     createModelPreferenceStoreRegistration(context),
+    createAppLookStoreRegistration(context),
     createSecretStoreRegistration(context),
     createAttachmentStoreRegistration(context),
     createSessionImportRegistration(context),

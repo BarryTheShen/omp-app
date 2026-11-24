@@ -5,6 +5,7 @@ import type { ServerFrame } from "@omp-app/contracts";
 import {
   type AbortSignalLike,
   AppFailure,
+  AppLookStore,
   AttachmentBlobStore,
   CapabilityMap,
   CheckpointStore,
@@ -225,6 +226,11 @@ function createContext(
       set: async () => ({ favorites: [], hidden: [], revision: "revision-2" }),
       subscribe: () => () => undefined,
     },
+    appLookStore: {
+      read: async () => ({ look: {}, revision: "revision-1" }),
+      set: async () => ({ look: {}, revision: "revision-2" }),
+      subscribe: () => () => undefined,
+    },
     secretStore: {
       list: async () => ({ hidden: false, secrets: [], others: 0, path: "/agent/secrets.yml" }),
       add: async () => ({ name: "API_KEY", placeholder: "$$APIKEY_2XUBD7NWOZ1U$$", length: 20 }),
@@ -439,6 +445,7 @@ describe("A1.9 port registrations", () => {
       .map((registration) => registration.port.name)
       .sort();
     const expected = [
+      AppLookStore,
       CheckpointStore,
       ConfigStore,
       DraftStore,

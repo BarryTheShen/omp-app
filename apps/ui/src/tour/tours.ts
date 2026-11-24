@@ -3630,11 +3630,33 @@ const ONE_SIGN_TOUR: Tour = {
   ],
 };
 
+const LOOK_SCOPE_TOUR: Tour = {
+  id: "look-scope-2026-11-24",
+  title: "One look on every device",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Every device or This device",
+      text: "Settings → App → Look starts with <b>Whose look</b>: <b>Every device</b> keeps the theme, style and the rest on the server, so each device you open the app on shows the same; <b>This device</b> gives this one its own, as omp has Every folder and This folder.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-24-look-scope",
+    when: "2026-11-24T04:00:00Z",
+    summary:
+      "The app's look follows you: Settings → App → Look → Whose look keeps the theme, style and the rest on the server for every device (the default), or gives one device its own.",
+    tours: [LOOK_SCOPE_TOUR],
+  },
   {
     id: "2026-11-24-one-sign",
     when: "2026-11-24T03:00:00Z",
