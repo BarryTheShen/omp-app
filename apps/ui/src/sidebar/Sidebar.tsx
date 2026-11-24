@@ -418,7 +418,10 @@ export function Sidebar({
           onChange={(event) => setQuery(event.target.value)}
         />
       </label>
-      <div data-tour="chat-list" className="min-h-0 flex-1 overflow-y-auto short:min-h-36">
+      <div
+        data-tour="chat-list"
+        className="chat-list-scroll min-h-0 flex-1 overflow-y-auto short:min-h-36"
+      >
         {!phone && workspaces !== undefined && (
           <Section
             label="Workspaces"

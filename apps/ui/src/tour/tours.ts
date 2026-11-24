@@ -3645,11 +3645,33 @@ const LOOK_SCOPE_TOUR: Tour = {
   ],
 };
 
+const AGENTS_FOLLOWED_TOUR: Tour = {
+  id: "agents-followed-2026-11-24",
+  title: "Subagents you come back to",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Their numbers keep moving",
+      text: "A chat you come back to from another chat asks for its subagents' reports again: the <b>Agent Hub</b>'s numbers keep moving, and a subagent that ended no longer shows as running with <b>Kill</b>. The chat list's scroll bar is its own thin one now, beside each row's ⋯.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-24-agents-followed",
+    when: "2026-11-24T23:30:00Z",
+    summary:
+      "Subagents stay followed: a chat you come back to from another chat keeps the Agent Hub's numbers moving and shows an ended subagent as ended (it stayed running, with Kill, on an iPhone). The chat list's scroll bar no longer covers each row's ⋯.",
+    tours: [AGENTS_FOLLOWED_TOUR],
+  },
   {
     id: "2026-11-24-look-scope",
     when: "2026-11-24T04:00:00Z",

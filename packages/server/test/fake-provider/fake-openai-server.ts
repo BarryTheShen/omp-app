@@ -450,6 +450,21 @@ function reply(request: Request): Reply {
       };
     return { text: "loop finished" };
   }
+  // `spawn_steps_subagent`'s child: one tool call of two seconds per round, so its progress moves while it runs. Here,
+  // before the replies to a tool's result, as `long_loop`: those would end it after its first step.
+  const stepsChild = /\bsteps_child\s+(\d+)\b/.exec(
+    lastUser >= 0 ? text(messages[lastUser]?.content) : "",
+  );
+  if (stepsChild !== null) {
+    const done = messages.slice(lastUser + 1).filter((message) => message.role === "tool").length;
+    if (done < Number(stepsChild[1]))
+      return {
+        tool: "bash",
+        args: { command: `sleep 2; echo step-${done}` },
+        id: `call_step_${done}`,
+      };
+    return finishSubagent(offersYield(request), "Steps done.", undefined, "All steps ran.");
+  }
   // `call_tools <name> <json> then <name> <json>`: two calls in one turn, the second after the first's result, then the
   // second's result said back, as `call_tool`'s "tool said" answer does. A spec changes something between them while the
   // turn runs (the Zen sidebar's tab in front, which the turn's calls must not follow). The first call's arguments are
@@ -727,6 +742,21 @@ function reply(request: Request): Reply {
       thinking: "I should start one child task that answers without yielding.",
     };
   if (prompt.includes("quiet_probe_child")) return { text: "Quiet probe answered in plain text." };
+  // A subagent of many steps, each a tool call of two seconds, so its progress (the Agent Hub's tool count) moves while
+  // it runs: `spawn_steps_subagent 20` runs twenty.
+  if (prompt.includes("spawn_steps_subagent")) {
+    const steps = /\bspawn_steps_subagent\s+(\d+)\b/.exec(prompt)?.[1] ?? "10";
+    return {
+      tool: "task",
+      args: {
+        name: "StepsProbe",
+        agent: "task",
+        task: `steps_child ${steps}: run the steps one at a time.`,
+        solutionSpace: "a few steps, one at a time",
+      },
+      thinking: "I should start one child task of many steps.",
+    };
+  }
   if (prompt.includes("spawn_long_subagent"))
     return {
       tool: "task",

@@ -2115,12 +2115,17 @@ export class ChatController {
     if (threadId !== null) await this.#releaseView(threadId);
   }
 
-  /** A pane shows the kept chat again: it takes the view back, unless its first open is still under way and takes it. */
+  /**
+   * A pane shows the kept chat again: it takes the view back, unless its first open is still under way and takes it, and
+   * asks for its subagents again (letting the view go took what it asked for with it).
+   */
   async unpark(): Promise<void> {
     this.#parked = false;
     const threadId = this.#threadId;
     if (!this.#openAnswered || threadId === null || this.#viewTaken || this.#disposed) return;
-    if (await this.#takeViewBack(threadId)) this.#tellHeld();
+    if (!(await this.#takeViewBack(threadId))) return;
+    void this.#followAgents(threadId).catch(() => undefined);
+    this.#tellHeld();
   }
 
   /** Takes this pane's view of the chat back with an open of its own: whether it holds one after. */
@@ -2193,6 +2198,7 @@ export class ChatController {
       this.#viewTaken = false;
       this.#held = false;
       if (await this.#takeViewBack(threadId)) {
+        void this.#followAgents(threadId).catch(() => undefined);
         this.#tellHeld();
         return true;
       }
