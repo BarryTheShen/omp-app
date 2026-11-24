@@ -3586,6 +3586,22 @@ const SETUP_TOUR: Tour = {
   ],
 };
 
+/** The lite view's Theme (V257): one centred step, as the lite view's other updates have. */
+const LITE_THEME_TOUR: Tour = {
+  id: "lite-theme-2026-11-23",
+  title: "A theme for the side panel",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Theme in the lite view",
+      text: "In another app's side panel (SiYuan, VS Code, Zen), the sun or moon in the header picks the panel's theme: match that app (the default), or the app's own light or dark theme and which one.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
@@ -3597,6 +3613,13 @@ export const UPDATES: readonly Update[] = [
     summary:
       "Set up omp-app: a few questions about how you use omp, then the settings that fit, shown before anything changes and undone in one click; on a new install it is offered on the first card. Fine-tune with omp continues in a chat whose proposal you review the same way.",
     tours: [SETUP_TOUR],
+  },
+  {
+    id: "2026-11-23-lite-theme",
+    when: "2026-11-24T01:30:00Z",
+    summary:
+      "The lite view in another app's side panel has a Theme button: match that app's light or dark and its colours (the default), or use one of the app's own light or dark themes.",
+    tours: [LITE_THEME_TOUR],
   },
   {
     id: "2026-11-23-workspace-tidy",

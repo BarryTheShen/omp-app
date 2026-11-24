@@ -100,7 +100,20 @@ export const BROWSER_CHECKS: LookChecks = {
   fontFamily: (value) => CSS.supports("font-family", value),
 };
 
-/** Sets the look's tokens on the page's root, where they outrank the theme's (`[data-theme]`). */
-export function applyHostLook(look: HostLook, root: HTMLElement = document.documentElement): void {
-  for (const [name, value] of Object.entries(look)) root.style.setProperty(name, value);
+/** The look's tokens that are not colours: the host's font and text size, which a theme chosen in the lite view keeps. */
+const NOT_COLOURS = new Set(["--sans", "--host-text-size"]);
+
+/**
+ * Sets the look's tokens on the page's root, where they outrank the theme's (`[data-theme]`). `colours` false: a theme
+ * chosen in the lite view shows, so only the host's font and text size are set, and its colours taken off.
+ */
+export function applyHostLook(
+  look: HostLook,
+  root: HTMLElement = document.documentElement,
+  colours = true,
+): void {
+  for (const [name, value] of Object.entries(look)) {
+    if (colours || NOT_COLOURS.has(name)) root.style.setProperty(name, value);
+    else root.style.removeProperty(name);
+  }
 }

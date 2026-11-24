@@ -138,20 +138,40 @@ export function startTheme(): void {
 
 /** The mode the lite view's framing page asks for: the address's `theme`, then its `settings` (`lite/embed.ts`). */
 let liteMode: "light" | "dark" | null = null;
+/**
+ * A theme chosen in the lite view itself, kept for every lite view in this browser (index.html's boot script reads the
+ * same keys); null matches the framing app (or the system).
+ */
+const LITE_KEY = "omp-app.lite.theme";
+const LITE_MODE_KEY = "omp-app.lite.theme.mode";
+let liteOwn: string | null = null;
+
+function readLiteOwn(): string | null {
+  const kept = read(LITE_KEY);
+  return kept !== null && byId.has(kept) ? kept : null;
+}
+
+/** The lite view's choice in force: its own theme, else the framing page's mode, else the system's. */
+function liteChoice(): ThemeChoice {
+  if (liteOwn !== null) return liteOwn;
+  return liteMode === null ? "system" : systemTheme(liteMode).id;
+}
 
 /**
- * The lite view's theme (#2843): the light or the dark theme kept for the mode the page that frames it asks for, else
- * for the system's mode. It is never kept: the full app's choice, in the same storage, stays as it is. The kept light
- * and dark themes, changed in another window, show here too.
+ * The lite view's theme (#2843): a theme chosen in it, else the light or the dark theme kept for the mode the page
+ * that frames it asks for, else for the system's mode. The full app's choice, in the same storage, stays as it is. The
+ * kept light and dark themes and the lite view's own choice, changed in another window, show here too.
  */
 export function startLiteTheme(mode: "light" | "dark" | null): void {
+  liteOwn = readLiteOwn();
   setLiteThemeMode(mode);
   systemLight().addEventListener("change", () => {
     if (choice === "system") changed();
   });
   window.addEventListener("storage", (event) => {
-    if (event.key !== SYSTEM_KEYS.light && event.key !== SYSTEM_KEYS.dark) return;
-    if (liteMode !== null) choice = systemTheme(liteMode).id;
+    if (event.key === LITE_KEY) liteOwn = readLiteOwn();
+    else if (event.key !== SYSTEM_KEYS.light && event.key !== SYSTEM_KEYS.dark) return;
+    choice = liteChoice();
     changed();
   });
 }
@@ -159,8 +179,40 @@ export function startLiteTheme(mode: "light" | "dark" | null): void {
 /** The framing page asks the lite view for another mode, or (`null`) the system's. */
 export function setLiteThemeMode(mode: "light" | "dark" | null): void {
   liteMode = mode;
-  choice = mode === null ? "system" : systemTheme(mode).id;
+  choice = liteChoice();
   changed();
+}
+
+/** Chooses the lite view's own theme, or (`null`) to match the framing app again; kept in this browser. */
+export function setLiteTheme(id: string | null): void {
+  const theme = id === null ? undefined : byId.get(id);
+  try {
+    if (theme === undefined) {
+      localStorage.removeItem(LITE_KEY);
+      localStorage.removeItem(LITE_MODE_KEY);
+    } else {
+      localStorage.setItem(LITE_KEY, theme.id);
+      localStorage.setItem(LITE_MODE_KEY, theme.mode);
+    }
+  } catch {
+    // Storage can be off; the choice then lasts until the page is closed.
+  }
+  liteOwn = theme?.id ?? null;
+  choice = liteChoice();
+  changed();
+}
+
+/** The lite view's own theme; null while it matches the framing app. */
+export const liteTheme = (): string | null => liteOwn;
+
+/** The lite view's own theme, kept current; null while it matches the framing app. */
+export function useLiteTheme(): string | null {
+  return useSyncExternalStore(subscribe, liteTheme);
+}
+
+/** The theme the page shows now. */
+export function useShownTheme(): ThemeInfo {
+  return useSyncExternalStore(subscribe, resolved);
 }
 
 const subscribe = (listener: () => void): (() => void) => {

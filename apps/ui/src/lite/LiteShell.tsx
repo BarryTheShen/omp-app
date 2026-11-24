@@ -1,7 +1,7 @@
 import type { AppClient } from "@omp-app/client";
 import type { FolderPath, ThreadId } from "@omp-app/contracts";
 import { cn } from "cn";
-import { Check, ChevronDown, SquareArrowOutUpRight, SquarePen } from "lucide-react";
+import { Check, ChevronDown, Moon, SquareArrowOutUpRight, SquarePen, Sun } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -15,7 +15,12 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -31,7 +36,14 @@ import { watchLink } from "../linkCheck";
 import { watchStuckLink } from "../linkRescue";
 import { titleOf } from "../sidebar/title";
 import { type ChatList, useChatList } from "../sidebar/useChatList";
-import { setLiteThemeMode } from "../theme/theme";
+import {
+  setLiteTheme,
+  setLiteThemeMode,
+  THEMES,
+  useLiteTheme,
+  useShownTheme,
+  useSystemThemes,
+} from "../theme/theme";
 import { chatCache } from "../workspace/chatCache";
 import { bindChat, embed, useEmbed } from "./embed";
 import { applyHostLook, BROWSER_CHECKS, hostLook } from "./hostLook";
@@ -106,11 +118,17 @@ export function LiteShell({
     () => withEmbedChoices(liteChoices(window.location.search), settings),
     [settings],
   );
-  // The look and mode the page that frames the panel sends (`lite/embed.ts`, started in `main.tsx`).
+  // The look and mode the page that frames the panel sends (`lite/embed.ts`, started in `main.tsx`); the look from the
+  // address until it sends one. Under a theme chosen in the lite view, only the look's font and size.
+  const own = useLiteTheme();
   useEffect(() => {
-    if (settings.look !== undefined) {
-      applyHostLook(hostLook(new URLSearchParams(settings.look).toString(), BROWSER_CHECKS));
-    }
+    const look =
+      settings.look === undefined
+        ? window.location.search
+        : new URLSearchParams(settings.look).toString();
+    applyHostLook(hostLook(look, BROWSER_CHECKS), undefined, own === null);
+  }, [settings, own]);
+  useEffect(() => {
     if (settings.theme !== undefined)
       setLiteThemeMode(settings.theme === "system" ? null : settings.theme);
   }, [settings]);
@@ -308,10 +326,78 @@ function LiteChat({
         >
           <SquarePen className={HEADER_ICON} />
         </Button>
+        <ThemeMenu />
         <FullApp threadId={threadId} />
       </header>
       <ChatPane controller={controller} />
     </>
+  );
+}
+
+/** The framing app's name as the theme menu says it; the system's when no app frames the view. */
+function hostName(host: string | null): string {
+  if (host === null) return "the system";
+  const known: Readonly<Record<string, string>> = {
+    siyuan: "SiYuan",
+    vscode: "VS Code",
+    zen: "Zen",
+  };
+  return known[host] ?? host.charAt(0).toUpperCase() + host.slice(1);
+}
+
+/**
+ * The lite view's theme (V257): match the app that frames it (its light or dark, and its colours), the system's when
+ * none does, or the app's own light or dark theme, and which one. Kept in this browser for every lite view.
+ */
+function ThemeMenu(): ReactNode {
+  const { host } = useEmbed();
+  const own = useLiteTheme();
+  const shown = useShownTheme();
+  const kept = useSystemThemes();
+  const mode = own === null ? "match" : shown.mode;
+  const label = "Theme";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        aria-label={label}
+        title={label}
+        className={cn(buttonVariants({ variant: "ghost", size: "icon" }), HEADER_BUTTON)}
+      >
+        {shown.mode === "dark" ? <Moon className={HEADER_ICON} /> : <Sun className={HEADER_ICON} />}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="max-h-[70vh] w-56 overflow-y-auto">
+        <DropdownMenuRadioGroup
+          value={mode}
+          onValueChange={(next: unknown) => {
+            if (next === "match") setLiteTheme(null);
+            else if (next === "light") setLiteTheme(kept.light.id);
+            else if (next === "dark") setLiteTheme(kept.dark.id);
+          }}
+        >
+          <DropdownMenuRadioItem value="match">Match {hostName(host)}</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>
+            {shown.mode === "dark" ? "Dark themes" : "Light themes"}
+          </DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={own ?? ""}
+            onValueChange={(next) => {
+              if (typeof next === "string") setLiteTheme(next);
+            }}
+          >
+            {THEMES.filter((theme) => theme.mode === shown.mode).map((theme) => (
+              <DropdownMenuRadioItem key={theme.id} value={theme.id}>
+                {theme.name}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

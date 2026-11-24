@@ -126,4 +126,46 @@ realTest.describe("new UI lite view in its host's look", () => {
     ).toBe("");
     expect(realApp.problems).toEqual([]);
   });
+
+  realTest(
+    "the Theme menu picks the app's own light or dark theme over the host's colours, keeps the host's font, is kept, and Match brings the host's look back",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/lite" });
+      await openLite(page, HOST);
+      const html = page.locator("html");
+      const menu = page.getByRole("menu");
+      await page.getByRole("button", { name: "Theme" }).click();
+      // No app frames this page: it matches the system, with the address's look.
+      await expect(menu.getByRole("menuitemradio", { name: "Match the system" })).toBeChecked();
+      await menu.getByRole("menuitemradio", { name: "Light", exact: true }).click();
+      await expect(html).toHaveAttribute("data-theme", "tern-light");
+      await expect
+        .poll(() => style(page, "[data-app-root='true']", "background-color"))
+        .not.toBe(SHOWN.bg);
+      expect(
+        await page.getByTitle("Recent chats").evaluate((e) => getComputedStyle(e).fontFamily),
+      ).toBe(HOST.font);
+
+      // Kept for the next load, from its first paint, and the full app's own choice untouched.
+      await page.reload();
+      await expect(html).toHaveAttribute("data-theme", "tern-light");
+      await expect(box(page)).toBeVisible({ timeout: 120_000 });
+      expect(await style(page, "[data-app-root='true']", "background-color")).not.toBe(SHOWN.bg);
+      expect(await page.evaluate(() => localStorage.getItem("omp-app.ui.theme"))).toBeNull();
+
+      // Which light theme: the menu lists them.
+      await page.getByRole("button", { name: "Theme" }).click();
+      const lights = menu.getByRole("group").getByRole("menuitemradio");
+      expect(await lights.count()).toBeGreaterThan(1);
+      await expect(
+        menu.getByRole("menuitemradio", { name: "Tern Light", exact: true }),
+      ).toBeChecked();
+      await menu.getByRole("menuitemradio", { name: "Match the system" }).click();
+      await expect(html).toHaveAttribute("data-theme", "tern-dark");
+      await expect
+        .poll(() => style(page, "[data-app-root='true']", "background-color"))
+        .toBe(SHOWN.bg);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
 });

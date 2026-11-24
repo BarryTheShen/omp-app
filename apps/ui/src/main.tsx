@@ -15,7 +15,7 @@ import { applyHostLook, BROWSER_CHECKS, hostLook } from "./lite/hostLook";
 import { isLiteView, liteThemeMode } from "./lite/lite";
 import { installPageErrorReporting } from "./pageErrors";
 import { reviewSetupProposal } from "./setup/open";
-import { startLiteTheme, startTheme } from "./theme/theme";
+import { liteTheme, startLiteTheme, startTheme } from "./theme/theme";
 import {
   CodeCopyContext,
   SetupProposalContext,
@@ -27,8 +27,9 @@ installPageErrorReporting();
 
 if (isLiteView()) {
   startLiteTheme(liteThemeMode());
-  // The framing app's own colours, font and text size, over the theme (#2844).
-  applyHostLook(hostLook(window.location.search, BROWSER_CHECKS));
+  // The framing app's own colours, font and text size, over the theme (#2844); under a theme chosen in the lite view,
+  // its font and size only.
+  applyHostLook(hostLook(window.location.search, BROWSER_CHECKS), undefined, liteTheme() === null);
   // The page that frames it talks to it from the first moment (`lite/embed.ts`): its hello may bring the panel's key.
   embed?.start();
 } else startTheme();

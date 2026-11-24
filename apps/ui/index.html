@@ -17,7 +17,8 @@
     <script>
       // The kept theme before the first paint; src/theme/theme.ts keeps it current afterwards (same keys and rule): the
       // choice, the mode of a chosen theme, and the light and the dark theme that "system" follows. The lite view (#2843)
-      // keeps no choice: the mode its framing page asks for (`?theme=`), else the system's (`startLiteTheme`).
+      // matches the mode its framing page asks for (`?theme=`), else the system's, unless a theme was chosen in the lite
+      // view itself (`omp-app.lite.theme`, with its mode): then that theme, without the framing app's colours.
       (() => {
         const read = (key) => {
           try {
@@ -27,10 +28,11 @@
           }
         };
         const lite = location.pathname === "/lite";
+        const own = lite ? read("omp-app.lite.theme") : null;
         const asked = lite ? new URLSearchParams(location.search).get("theme") : null;
-        const choice = lite ? "system" : (read("omp-app.ui.theme") ?? "tern-dark");
+        const choice = own ?? (lite ? "system" : (read("omp-app.ui.theme") ?? "tern-dark"));
         let theme = choice;
-        let dark = read("omp-app.ui.theme.mode") !== "light";
+        let dark = (own === null ? read("omp-app.ui.theme.mode") : read("omp-app.lite.theme.mode")) !== "light";
         if (choice === "system") {
           dark =
             asked === "dark" ||
@@ -45,8 +47,8 @@
         const style = lite ? null : read("omp-app.ui.style");
         if (style !== null && style !== "tern") document.documentElement.dataset.style = style;
         // The framing app's background from the first paint (#2844), by src/lite/hostLook.ts's rule for `bg`; the rest of
-        // its look follows when the app starts.
-        const bg = lite ? (new URLSearchParams(location.search).get("bg") ?? "").trim() : "";
+        // its look follows when the app starts. Not under a theme chosen in the lite view.
+        const bg = lite && own === null ? (new URLSearchParams(location.search).get("bg") ?? "").trim() : "";
         if (bg !== "" && bg.length <= 200 && CSS.supports("color", bg)) {
           document.documentElement.style.setProperty("--page", bg);
           document.documentElement.style.setProperty("--panel", bg);
