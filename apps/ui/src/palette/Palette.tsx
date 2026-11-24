@@ -34,6 +34,7 @@ import { LOCAL_SERVER_LABEL, remoteServerLabel } from "../desktop/ServerSection"
 import { KEYS, keycap } from "../keys/table";
 import { showPanel, togglePanel, usePanelState } from "../panels/panel-state";
 import { PANELS } from "../panels/registry";
+import { setSetupOpen } from "../setup/open";
 import { snippet, useMeaningSearch } from "../sidebar/meaning";
 import type { ChatList } from "../sidebar/useChatList";
 import { setSystemTheme, setThemeChoice, setThemeMode, THEMES } from "../theme/theme";
@@ -389,6 +390,13 @@ export function Palette({
         label: "What's new",
         detail: "Every update and its tours",
         run: () => close(onWhatsNew),
+      },
+      {
+        key: "app:setup",
+        group: "Commands",
+        label: "Set up omp-app",
+        detail: "A few questions, then the settings that fit",
+        run: () => close(() => setSetupOpen(true)),
       },
       ...chatModes(controller, close, onSetGoal),
       ...([true, false] as const).map((paused) => ({

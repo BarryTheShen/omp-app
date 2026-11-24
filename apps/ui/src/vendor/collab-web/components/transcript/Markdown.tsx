@@ -23,6 +23,9 @@ export const CodeCopyContext = createContext<(text: string) => Promise<void>>((t
 	navigator.clipboard.writeText(text),
 );
 
+/** omp-app: opens the setup's review of a proposal block's text (`setup/proposal.ts`); null where nothing reviews it. */
+export const SetupProposalContext = createContext<((text: string) => void) | null>(null);
+
 function unescapeHtml(raw: string): string {
 	const parseCodePoint = (value: number): string => {
 		if (Number.isFinite(value) && value >= 0 && value <= 0x10ffff) {
@@ -112,12 +115,17 @@ const md = new Marked({
 			return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener noreferrer">${label}</a>`;
 		},
 		// A code block, with a Copy button that `clickIn` handles; in code's colours where its language is known (#2801).
+		// The setup's proposal (omp-app: `omp-app-setup`, `setup/proposal.ts`) also gets Review these settings.
 		code({ text, lang, escaped }) {
 			const language = (lang ?? "").match(/^\S*/)?.[0] ?? "";
 			const body = `${text.replace(/\n$/, "")}\n`;
 			const languageClass = language === "" ? "" : ` class="language-${escapeHtml(language)}"`;
 			const html = escaped ? body : (highlightCode(body, language) ?? escapeHtml(body));
-			return `<div class="tr-code"><button type="button" class="tr-code-copy" data-copy-code aria-label="Copy code">Copy</button><pre><code${languageClass}>${html}</code></pre></div>\n`;
+			const review =
+				language === "omp-app-setup"
+					? '<button type="button" class="tr-setup-review" data-setup-proposal>Review these settings</button>'
+					: "";
+			return `<div class="tr-code"><button type="button" class="tr-code-copy" data-copy-code aria-label="Copy code">Copy</button><pre><code${languageClass}>${html}</code></pre></div>${review}\n`;
 		},
 	},
 	breaks: true,
@@ -142,6 +150,7 @@ function clickIn(
 	event: MouseEvent<HTMLDivElement>,
 	openFile: ((href: string) => void) | null,
 	copy: (text: string) => Promise<void>,
+	review: ((text: string) => void) | null,
 ): void {
 	const target = event.target instanceof Element ? event.target : null;
 	const fileLink = target?.closest("a[data-file]");
@@ -149,6 +158,12 @@ function clickIn(
 		event.preventDefault();
 		const href = fileLink.dataset.file;
 		if (href !== undefined) openFile?.(href);
+		return;
+	}
+	// omp-app: the setup's proposal, its block just before the button.
+	const proposal = target?.closest("button[data-setup-proposal]");
+	if (proposal instanceof HTMLButtonElement) {
+		review?.(proposal.previousElementSibling?.querySelector("code")?.textContent ?? "");
 		return;
 	}
 	const button = target?.closest("button[data-copy-code]");
@@ -171,9 +186,10 @@ export const Markdown = memo(function Markdown({ text }: { text: string }): Reac
 	const html = useMemo(() => renderMarkdown(text), [text]);
 	const openFile = use(FileLinkContext);
 	const copy = use(CodeCopyContext);
+	const review = use(SetupProposalContext);
 	// biome-ignore lint/a11y/noStaticElementInteractions: it only takes clicks on links and the code blocks' Copy buttons, which take the keyboard themselves
 	// biome-ignore lint/a11y/useKeyWithClickEvents: as above
-	return <div className="tr-md" onClick={(event) => clickIn(event, openFile, copy)} dangerouslySetInnerHTML={{ __html: html }} />;
+	return <div className="tr-md" onClick={(event) => clickIn(event, openFile, copy, review)} dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
 /**
@@ -287,7 +303,8 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({ text }: { tex
 	}, [text]);
 	const openFile = use(FileLinkContext);
 	const copy = use(CodeCopyContext);
+	const review = use(SetupProposalContext);
 	// biome-ignore lint/a11y/noStaticElementInteractions: it only takes clicks on links and the code blocks' Copy buttons, which take the keyboard themselves
 	// biome-ignore lint/a11y/useKeyWithClickEvents: as above
-	return <div className="tr-md" onClick={(event) => clickIn(event, openFile, copy)} dangerouslySetInnerHTML={{ __html: html }} />;
+	return <div className="tr-md" onClick={(event) => clickIn(event, openFile, copy, review)} dangerouslySetInnerHTML={{ __html: html }} />;
 });

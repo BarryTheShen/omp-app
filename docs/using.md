@@ -2,6 +2,12 @@
 
 This page goes through the app part by part: what each part is, how to open it, and what it does. Names in bold or quotes are the labels the app shows. Keys are written as they are on a Linux or Windows keyboard; on an iPad's keyboard or a Mac, ⌘ does what Ctrl does, and the app lists its keys with ⌘. Every key is in [the table of keys](#the-palette-and-the-keys).
 
+## Set up omp-app
+
+**Set up omp-app** asks a few questions about how you will use omp (what for, where, whether you watch a chat work, notifications, light or dark, the style, tool calls, idle workspaces, when omp should ask before acting, usage limits), then shows **Your setup**: every setting that would change, as *now → after*. Nothing changes before **Apply**, and you can untick any line to keep it as it is; a value you set yourself starts unticked. Every question has **Skip**, which changes nothing. Afterwards it offers the next steps it cannot take for you: turning notifications on here (a test one follows), on your other devices, and signing in to a model provider.
+
+It is offered on the first launch on a computer (on the "New: guided tours" card), and is always in Settings → App → Set up and in the palette. **Undo setup**, beside it, puts back every setting the last setup changed: omp's own settings to the value you had (or omp's default), and this browser's to what they were. omp's settings go to every folder's settings file; light or dark, the style, tool calls and idle workspaces are kept in the browser the setup ran in.
+
 ## The chat list and workspaces
 
 ### The chat list

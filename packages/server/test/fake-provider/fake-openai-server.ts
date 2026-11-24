@@ -567,6 +567,12 @@ function reply(request: Request): Reply {
     return { text: '<title emoji="🧪" code="FAKE">Fake chat title marker</title>' };
   // omp's title model naming a chat from its conversation (`renameTitle`: an old chat opened, #2798), as a `<chat>` block.
   if (prompt.startsWith("<chat>")) return { text: "<title>Fake old chat title</title>" };
+  // The app's setup interview (`apps/ui/src/setup/proposal.ts`): a proposal block at once, one setting it may change and
+  // one it may not, as a model that answers without asking would.
+  if (prompt.includes("Help me fine-tune omp for how I work"))
+    return {
+      text: 'I propose that omp asks before changing files.\n\n```omp-app-setup\n[{"key": "tools.approvalMode", "value": "write", "why": "You review file changes"}, {"key": "no.such.setting", "value": 1}]\n```',
+    };
   // `context_has <word>`: whether any earlier message the model was sent holds <word>. A `!!` run (#839) is kept out of the
   // model's context, so its command and output must not reach it; a plain `!` run does.
   const contextProbe = /context_has\s+(\S+)/.exec(prompt);

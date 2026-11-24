@@ -14,8 +14,12 @@ import { embed } from "./lite/embed";
 import { applyHostLook, BROWSER_CHECKS, hostLook } from "./lite/hostLook";
 import { isLiteView, liteThemeMode } from "./lite/lite";
 import { installPageErrorReporting } from "./pageErrors";
+import { reviewSetupProposal } from "./setup/open";
 import { startLiteTheme, startTheme } from "./theme/theme";
-import { CodeCopyContext } from "./vendor/collab-web/components/transcript/Markdown";
+import {
+  CodeCopyContext,
+  SetupProposalContext,
+} from "./vendor/collab-web/components/transcript/Markdown";
 import { followVisualViewport } from "./viewport";
 
 // From here on the page's errors go to the app's debug log; those before the connection wait for it (`App`).
@@ -36,7 +40,10 @@ createRoot(root).render(
     <TooltipProvider delay={500}>
       {/* A code block's Copy goes through the panel's host where the browser's clipboard refuses the page (VS Code). */}
       <CodeCopyContext value={writeClipboard}>
-        <App />
+        {/* The setup's proposal block in a chat opens its review (`setup/proposal.ts`). */}
+        <SetupProposalContext value={reviewSetupProposal}>
+          <App />
+        </SetupProposalContext>
       </CodeCopyContext>
     </TooltipProvider>
   </StrictMode>,

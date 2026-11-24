@@ -3570,11 +3570,34 @@ const WORKSPACE_TIDY_TOUR: Tour = {
   ],
 };
 
+/** Set up omp-app: one centred step. */
+const SETUP_TOUR: Tour = {
+  id: "setup-2026-11-23",
+  title: "Set up omp-app",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Set up omp-app",
+      text: "Settings → App → Set up (or the palette) asks a few questions about how you use omp, shows every setting that would change, and changes nothing before Apply. Undo setup puts them back. Fine-tune with omp continues in a chat that proposes omp settings for you to review.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-23-setup",
+    when: "2026-11-24T02:00:00Z",
+    summary:
+      "Set up omp-app: a few questions about how you use omp, then the settings that fit, shown before anything changes and undone in one click; on a new install it is offered on the first card. Fine-tune with omp continues in a chat whose proposal you review the same way.",
+    tours: [SETUP_TOUR],
+  },
   {
     id: "2026-11-23-workspace-tidy",
     when: "2026-11-24T01:00:00Z",

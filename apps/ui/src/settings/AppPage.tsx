@@ -16,6 +16,7 @@ import { Devices } from "./Devices";
 import { OmpSection } from "./OmpSection";
 import { QuickPromptsSection } from "./QuickPromptsSection";
 import { SearchSection } from "./SearchSection";
+import { SetupSection } from "./SetupSection";
 import { SharingSection } from "./SharingSection";
 import { WorkspacesSection } from "./WorkspacesSection";
 
@@ -45,6 +46,7 @@ export function AppPage({
         paired with it, its debug log, and its keys.
       </p>
       <AppVersionSection client={client} />
+      <SetupSection client={client} />
       {phone && (
         <button
           type="button"

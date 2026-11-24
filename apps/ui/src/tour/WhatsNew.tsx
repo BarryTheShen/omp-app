@@ -1,6 +1,7 @@
 import { type ReactNode, type RefObject, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { usePhone } from "../phone";
+import { setSetupOpen } from "../setup/open";
 import type { WorkspaceHandle } from "../workspace/Workspace";
 import { startTours } from "./runner";
 import { markOffered, offeredBefore, unoffered } from "./seen";
@@ -73,7 +74,7 @@ export function WhatsNew({
       <h2 className="font-medium text-t1">{heading}</h2>
       {firstVisit ? (
         <p className="mt-1 text-xs text-t2 short:hidden">
-          Learn what's here by doing it, a step at a time.
+          Learn what's here by doing it, a step at a time, or set the app up for how you work first.
         </p>
       ) : (
         <ul className="mt-1 flex flex-col gap-0.5 text-xs text-t2 short:hidden">
@@ -93,6 +94,19 @@ export function WhatsNew({
       >
         All updates
       </Button>
+      {firstVisit && (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mt-2 w-full tablet:h-11 short:mt-1"
+          onClick={() => {
+            dismiss();
+            setSetupOpen(true);
+          }}
+        >
+          Set up omp-app
+        </Button>
+      )}
       <div className="mt-2 flex items-center justify-end gap-2 short:mt-1">
         <Button variant="ghost" size="sm" className="tablet:h-11" onClick={dismiss}>
           Later

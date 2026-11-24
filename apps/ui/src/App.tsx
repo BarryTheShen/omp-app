@@ -68,7 +68,10 @@ import { traceViewport } from "./perf/viewportTrace";
 import { isPhone, usePhone, useShort } from "./phone";
 import { registerWorker, useNotificationOpens } from "./push/push";
 import { SecretNotice } from "./secrets/SecretNotice";
+import { loadSettingsData } from "./settings/data";
 import type { SettingsPlace } from "./settings/SettingsPage";
+import { interviewPrompt } from "./setup/proposal";
+import { SetupHost } from "./setup/SetupHost";
 import { ListEdge } from "./sidebar/ListEdge";
 import { Sidebar } from "./sidebar/Sidebar";
 import { useChatListSize, useNarrowForPanel } from "./sidebar/size";
@@ -392,6 +395,24 @@ function Shell({
     workspace.current?.open(target, how);
     setShowChat(true);
   }, []);
+  /**
+   * The setup's AI round: a new chat whose first message asks omp to interview the person and propose omp settings
+   * (`setup/proposal.ts`), sent as soon as the new chat's box is there.
+   */
+  const fineTune = useCallback(() => {
+    void loadSettingsData().then(({ settings }) => {
+      const text = interviewPrompt(settings);
+      openChat({ kind: "new", folder }, "front");
+      const until = Date.now() + 10_000;
+      const send = (): void => {
+        const shown = workspace.current?.focused();
+        if (shown?.controller.isNew === true && shown.composer !== undefined)
+          shown.composer.suggest(text);
+        else if (Date.now() < until) window.setTimeout(send, 100);
+      };
+      send();
+    });
+  }, [openChat, folder]);
   // The app's own notifications: the worker that shows them, and a tap while the app is open opens its chat here.
   useEffect(registerWorker, []);
   useNotificationOpens(
@@ -754,6 +775,12 @@ function Shell({
       )}
       <Shortcuts open={shortcuts} onOpenChange={setShortcuts} />
       <WhatsNewList open={whatsNew} onOpenChange={setWhatsNew} workspace={workspace} />
+      <SetupHost
+        client={client}
+        onSignIn={showSettings}
+        onOpening={() => setSettings(false)}
+        onFineTune={fineTune}
+      />
       <GoalDialog controller={goalFor} onClose={() => setGoalFor(null)} />
       {settingsLoaded && (
         <Suspense fallback={null}>

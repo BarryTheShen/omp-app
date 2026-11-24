@@ -663,6 +663,23 @@
 	color: var(--fg);
 }
 
+/* omp-app: the setup's proposal block opens its review (`setup/proposal.ts`). */
+.tr-md .tr-setup-review {
+	margin: 6px 0 2px;
+	padding: 5px 12px;
+	border: 0;
+	border-radius: var(--radius-sm);
+	background: var(--primary);
+	color: var(--primary-foreground);
+	font: 500 12px/1.4 var(--font-ui);
+	cursor: pointer;
+}
+
+.tr-md .tr-setup-review:focus-visible {
+	outline: 2px solid var(--ring, var(--accent));
+	outline-offset: 2px;
+}
+
 /* Shown all the time, the button gets a strip of its own above the code, so it never covers the first line. */
 @media (hover: none) {
 	.tr-md .tr-code-copy {
