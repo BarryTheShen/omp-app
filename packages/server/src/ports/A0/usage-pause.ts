@@ -469,6 +469,34 @@ export class UsagePause {
   }
 
   /**
+   * The chat's model changed (its model, its role's, a preset): a held chat is judged again at once on the provider it
+   * runs on now, so one moved off the provider whose limit held it continues without waiting for the next usage read.
+   */
+  onModelChanged(threadId: ThreadId): Promise<void> {
+    if (!this.#holds.has(threadId)) return Promise.resolve();
+    return this.#queue(() => this.#judge([threadId]));
+  }
+
+  /**
+   * A held chat's hold, on the provider of the model its omp runs now; kept as it is when omp does not say (not
+   * running). A changed provider is saved with the hold, so the chat's notice names it.
+   */
+  async #currentHold(threadId: ThreadId, hold: UsagePauseHold): Promise<UsagePauseHold> {
+    const providerId = await this.#deps.providerOf(threadId).catch(() => null);
+    if (providerId === null || providerId === hold.providerId) return hold;
+    const moved: UsagePauseHold = { ...hold, providerId };
+    this.#holds.set(threadId, moved);
+    this.#deps.logger?.info("usage_pause.provider_changed", {
+      threadId,
+      from: hold.providerId,
+      to: providerId,
+    });
+    this.#keep();
+    this.#notifyHold(threadId);
+    return moved;
+  }
+
+  /**
    * The chat's pause changed. A held chat running again was resumed by someone else: the rule lets it be, and the
    * conditions that held it do not pause it again until they next start.
    */
@@ -696,15 +724,17 @@ export class UsagePause {
           await this.#release(threadId, "unwatched");
           continue;
         }
-        const holding = this.#holding(threadId, hold.providerId, heldFor(hold), now);
+        // Judged on the model it runs now: a chat whose model moved to another provider is held by that one's window.
+        const current = await this.#currentHold(threadId, hold);
+        const holding = this.#holding(threadId, current.providerId, heldFor(current), now);
         if (holding.length === 0) {
           // Its turn comes after this pass, in the queue's order.
           this.#due.add(threadId);
           continue;
         }
         // Held again before its turn came.
-        if (this.#due.delete(threadId)) this.#log(threadId, "held_again", hold);
-        this.#rehold(threadId, hold, holding);
+        if (this.#due.delete(threadId)) this.#log(threadId, "held_again", current);
+        this.#rehold(threadId, current, holding);
         continue;
       }
       if (

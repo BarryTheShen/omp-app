@@ -235,6 +235,16 @@ const SESSION_SWITCH_METHODS: ReadonlySet<ChatHostMethod> = new Set([
   "fork",
 ]);
 
+/** The methods that may give the chat a model of another provider: a usage hold is judged again on that one's window. */
+const MODEL_SWITCH_METHODS: ReadonlySet<ChatHostMethod> = new Set([
+  "set_model",
+  "cycle_role_models",
+  "use_role_model",
+  "assign_model_role",
+  "clear_model_role",
+  "apply_model_preset",
+]);
+
 /** One kind of host registration: per connection, then per owner. */
 type Registrations<T> = ReadonlyMap<string, ReadonlyMap<string, readonly T[]>>;
 
@@ -1352,6 +1362,8 @@ export class ChatSessionPortRuntime {
       entry.firstPrompt = undefined;
       await this.#refreshIdentity(entry);
     }
+    // A chat held at a usage limit whose model moved to another provider continues when that one's window is clear.
+    if (MODEL_SWITCH_METHODS.has(method)) void this.#usagePause?.onModelChanged(args.threadId);
     return result;
   }
 

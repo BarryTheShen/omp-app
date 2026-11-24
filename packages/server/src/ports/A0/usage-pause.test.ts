@@ -236,6 +236,33 @@ describe("usage pause (#2781 part 3)", () => {
     expect(sent).toEqual(["pause A", "pause B"]);
   });
 
+  test("a held chat moved to a model of another provider continues at once when that one's window is clear, and is held by it when not", async () => {
+    const { running, sent, changes, rule } = setup();
+    running.set(A, "anthropic");
+    running.set(B, "anthropic");
+    await rule.setMark(A, FOLDER, 95);
+    await rule.setMark(B, FOLDER, 95);
+    await rule.onUsage(usage({ anthropic: { fiveHour: 99 }, "openai-codex": { fiveHour: 20 } }));
+    expect(sent).toEqual(["pause A", "pause B"]);
+
+    // A moves to GPT: OpenAI at 20%, so it continues without waiting for the next usage read; its notice goes.
+    running.set(A, "openai-codex");
+    await rule.onModelChanged(A);
+    expect(sent).toEqual(["pause A", "pause B", "resume A"]);
+    expect(changes.at(-1)).toEqual([A, 95, null]);
+
+    // B moves to GPT while OpenAI is at its limit too: still held, now by OpenAI's window, which its notice names.
+    await rule.onUsage(usage({ anthropic: { fiveHour: 99 }, "openai-codex": { fiveHour: 97 } }));
+    running.set(B, "openai-codex");
+    await rule.onModelChanged(B);
+    expect(sent).toEqual(["pause A", "pause B", "resume A", "pause A"]);
+    expect(changes.filter(([id]) => id === B).at(-1)?.[2]?.providerId).toBe("openai-codex");
+
+    // A model change on a chat that is not held changes nothing.
+    await rule.onModelChanged(C);
+    expect(sent).toEqual(["pause A", "pause B", "resume A", "pause A"]);
+  });
+
   test("a chat the reader paused or resumed stays as the reader left it", async () => {
     const { timer, running, paused, sent, rule } = setup();
     running.set(A, "anthropic");
