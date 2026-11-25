@@ -83,6 +83,42 @@ export async function readFileBytes(
   }
 }
 
+/** How many chunk reads one range read keeps under way at once. */
+const RANGE_READS_AT_ONCE = 4;
+
+/**
+ * Bytes `begin` to `end` of a file, as PDF.js asks for them: its chunks read side by side. `version` is the file's size
+ * and time when it was opened; a file written since throws, so a page is never drawn from a mix of two versions.
+ */
+export async function readFileRange(
+  files: FilesClient,
+  folder: FolderPath,
+  path: WorkspaceRelativePath,
+  begin: number,
+  end: number,
+  version: { readonly size: number; readonly modifiedMs: number },
+): Promise<Uint8Array> {
+  const bytes = new Uint8Array(Math.max(0, end - begin));
+  const starts: number[] = [];
+  for (let at = begin; at < end; at += MAX_FILE_CHUNK_BYTES) starts.push(at);
+  let next = 0;
+  const reader = async (): Promise<void> => {
+    for (let at = starts[next++]; at !== undefined; at = starts[next++]) {
+      const chunk = await files.read({
+        folder,
+        path,
+        offset: at,
+        length: Math.min(MAX_FILE_CHUNK_BYTES, end - at),
+      });
+      if (chunk.size !== version.size || chunk.modifiedMs !== version.modifiedMs)
+        throw new Error("The file changed while it was read.");
+      bytes.set(fromBase64(chunk.bytes), at - begin);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(RANGE_READS_AT_ONCE, starts.length) }, reader));
+  return bytes;
+}
+
 export interface UploadOptions {
   /** A hash: the file must still have it. `null`: it must not exist yet. Left out: overwrite. */
   readonly expectedHash?: FileHash | null;

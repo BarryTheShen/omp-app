@@ -94,6 +94,35 @@ realTest.describe("new UI message box: references are pointers", () => {
     },
   );
 
+  realTest(
+    "on a touch screen the chip covers its reference exactly, in a look whose text is under 16 px",
+    async ({ realApp, browser }) => {
+      const context = await browser.newContext({
+        viewport: { width: 402, height: 874 },
+        hasTouch: true,
+      });
+      const page = await realApp.open({ path: "/", context });
+      // A look with smaller text (Blocks: 14 px). A touch screen's box is 16 px at least, so iOS does not zoom into it.
+      await page.addStyleTag({ content: ":root { --host-text-size: 14px !important; }" });
+      await expect(box(page)).toBeVisible({ timeout: 120_000 });
+      await expect(box(page)).toBeEnabled({ timeout: 120_000 });
+      await pastePicture(page);
+      const fit = await page.locator("[data-tour='message-box'] mark").evaluate((mark, text) => {
+        const area = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]');
+        if (area === null) return null;
+        const style = getComputedStyle(area);
+        const context = document.createElement("canvas").getContext("2d");
+        if (context === null) return null;
+        context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+        return { mark: mark.getBoundingClientRect().width, text: context.measureText(text).width };
+      }, MARKER);
+      expect(fit).not.toBeNull();
+      expect(Math.abs((fit?.mark ?? 0) - (fit?.text ?? 0))).toBeLessThan(2);
+      expect(realApp.problems).toEqual([]);
+      await context.close();
+    },
+  );
+
   realTest("a secret's placeholder goes whole", async ({ realApp }) => {
     const page = await newChat(realApp);
     await box(page).fill(`key ${SECRET}`);

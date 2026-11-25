@@ -222,9 +222,13 @@
     }
   }
 
-  /* iOS zooms the page into a text field under 16 px when it gets the focus. */
+  /*
+   * iOS zooms the page into a text field under 16 px when it gets the focus. The message box's references, drawn behind
+   * its text (`data-box-marks`), take the same size: at the style's smaller one they fell short of their words.
+   */
   @media (pointer: coarse) {
     textarea,
+    [data-box-marks],
     [contenteditable="true"],
     input:is(
         :not([type]),

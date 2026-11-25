@@ -1365,6 +1365,7 @@ export const Composer = memo(function Composer({
                 {marks.length > 0 && (
                   <div
                     ref={marksRef}
+                    data-box-marks
                     aria-hidden="true"
                     className={`pointer-events-none absolute inset-0 overflow-y-auto whitespace-pre-wrap break-words text-transparent ${boxText}`}
                   >

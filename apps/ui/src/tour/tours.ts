@@ -3681,11 +3681,33 @@ const VOICE_TOUR: Tour = {
   ],
 };
 
+const PDF_FAST_TOUR: Tour = {
+  id: "pdf-fast-2026-11-25",
+  title: "Large PDFs open fast",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "The first page at once",
+      text: "A PDF in the Files panel is read as its pages need it: the first page of a large one shows after a few reads, not after the whole file came over the connection, and a page further on loads as you scroll near it. Two fingers zoom the PDF itself, not the screen, so on a phone Back stays in reach; the bar at its top zooms too.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-25-pdf-fast",
+    when: "2026-11-25T03:00:00Z",
+    summary:
+      "Large PDFs open fast: the Files panel reads only the parts of a PDF its pages need, so the first page shows at once and a page further on loads as you scroll near it. A pinch zooms the PDF, not the screen (on a phone the zoomed screen hid Back), with zoom buttons too; and on a phone a picture's name in the message box is marked exactly over its words.",
+    tours: [PDF_FAST_TOUR],
+  },
   {
     id: "2026-11-25-voice",
     when: "2026-11-25T00:30:00Z",

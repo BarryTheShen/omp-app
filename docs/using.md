@@ -139,6 +139,8 @@ Your answers go to omp together, as one message from you, between omp's steps: o
 
 The chat folder's files, from any device. A click shows a file below the list: text has **Edit** and **Save**, and a file that changed on disk since you opened it is never overwritten without asking (a merge view opens instead). The buttons **New file**, **New folder** and **Upload** are at the top, and you can drop files on the panel to upload them. A row's menu renames, deletes (with an undo), downloads, and puts the file's name in your chat. A file that git reports changed is marked "Changed in git". **Open as tab** shows a file in a window beside the chats. An HTML file has **Share as a page**: see [Other devices](devices.md#how-do-i-share-a-port-with-my-devices).
 
+A PDF (up to 100 MB) is drawn by the app itself, page by page, in every window. Only the parts a page needs are read: the first page of a large PDF shows after a few reads rather than after the whole file came over the connection, and a page further on is read as you scroll near it. The PDF zooms itself: two fingers pinch its pages (not the whole screen, so on a phone **Back** stays on the screen), and the bar at its top has **Zoom out**, the zoom (a click fits the pages to the width again) and **Zoom in**, up to 400%; zoomed pages are drawn again, sharp. One the app can't draw offers **Open** and **Download**.
+
 ### Ports
 
 The services running on the app's computer, and the pages you shared, which you can open on your paired devices. See [Other devices](devices.md#how-do-i-share-a-port-with-my-devices).

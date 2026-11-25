@@ -29,8 +29,15 @@ import { loadable } from "../../loadable";
 import { Markdown } from "../../vendor/collab-web/components/transcript/Markdown";
 import { previewDocument } from "./htmlPreview";
 import { baseName } from "./names";
+import type { PdfSource } from "./PdfView";
 import { type ConflictChoice, resolveConflict, saveText } from "./save";
-import { downloadBytes, type FilesClient, readFileBytes, sizeText } from "./transfer";
+import {
+  downloadBytes,
+  type FilesClient,
+  readFileBytes,
+  readFileRange,
+  sizeText,
+} from "./transfer";
 import { chooseViewer, decodeText, TEXT_EDIT_BYTES, type ViewerChoice } from "./viewer";
 
 /**
@@ -139,7 +146,9 @@ export function FileViewer({
       try {
         const stat = await files.stat({ folder, path });
         let choice = chooseViewer(stat.mediaType, stat.size);
-        if (choice.kind === "other") {
+        // A PDF is read as PDF.js asks for its parts (`pdfSource`), not whole first: a large one showed nothing until
+        // every byte had come over the link.
+        if (choice.kind === "other" || choice.kind === "pdf") {
           setShown({ state: "ready", stat, choice, bytes: new Uint8Array(), complete: false });
           return;
         }
@@ -240,6 +249,30 @@ export function FileViewer({
     },
     [url],
   );
+
+  const pdfSource = useMemo((): PdfSource | null => {
+    if (shown.state !== "ready" || shown.choice.kind !== "pdf") return null;
+    const version = { size: shown.stat.size, modifiedMs: shown.stat.modifiedMs };
+    return {
+      size: shown.stat.size,
+      read: (begin, end) => readFileRange(files, folder, path, begin, end, version),
+    };
+  }, [shown, files, folder, path]);
+
+  // A PDF that PDF.js could not draw is read whole, for Open; Download reads it whole by itself.
+  useEffect(() => {
+    if (pdfFailure === null || shown.state !== "ready" || shown.choice.kind !== "pdf") return;
+    if (shown.complete) return;
+    let live = true;
+    void readFileBytes(files, folder, path)
+      .then((read) => {
+        if (live) setShown({ ...shown, bytes: read.bytes, complete: true });
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [pdfFailure, shown, files, folder, path]);
 
   const forget = () => void del(unsavedKey, unsavedStore);
 
@@ -505,16 +538,20 @@ export function FileViewer({
             />
           </div>
         )}
-        {ready !== null && kind === "pdf" && pdfFailure === null && (
+        {ready !== null && kind === "pdf" && pdfSource !== null && pdfFailure === null && (
           <Suspense fallback={<p className="p-3 text-sm text-t3">Drawing the PDF…</p>}>
-            <PdfView bytes={ready.bytes} name={name} onFailed={setPdfFailure} />
+            <PdfView source={pdfSource} name={name} onFailed={setPdfFailure} />
           </Suspense>
         )}
-        {ready !== null && kind === "pdf" && url !== null && pdfFailure !== null && (
+        {ready !== null && kind === "pdf" && pdfFailure !== null && (
           <div className="flex flex-col gap-2 p-3">
             <p className="text-sm text-t3">This PDF can't be drawn here: {pdfFailure}</p>
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => window.open(url, "_blank", "noopener")}>
+              <Button
+                variant="secondary"
+                disabled={url === null}
+                onClick={() => url !== null && window.open(url, "_blank", "noopener")}
+              >
                 <ExternalLink /> Open
               </Button>
               <Button variant="ghost" onClick={() => void download()}>

@@ -47,9 +47,10 @@ export function FileDialog({
         if (!open) close();
       }}
     >
+      {/* No pinch-zoom of the screen here: zoomed, Back left the screen and nothing brought it back (a PDF zooms itself). */}
       <DialogContent
         showCloseButton={false}
-        className="top-0 left-0 flex h-full max-h-none w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none p-0 pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) ring-0 sm:max-w-none"
+        className="top-0 left-0 flex h-full max-h-none w-full max-w-none translate-x-0 translate-y-0 touch-pan-x touch-pan-y flex-col gap-0 overflow-hidden rounded-none p-0 pt-(--safe-top) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) ring-0 sm:max-w-none"
       >
         <DialogTitle className="sr-only">{baseName(path)}</DialogTitle>
         <Button
