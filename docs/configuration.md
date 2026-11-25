@@ -154,6 +154,8 @@ Undo: run `systemctl --user edit omp-app` again and delete the lines, or run `sy
 | `chat-index.sqlite`, `search-settings.json`, `search-key` | Search by meaning: the index of the chats' text, its settings, and the embedding service's key (readable by your account only). |
 | `tui-settings.yml` | The omp settings `omp-app tui` adds to omp's own, so omp in the terminal never updates itself apart from the app. |
 | `device-access/` | Agent access: the linked computers and what ran on each. Its `ssh_config` and proxy socket live in `$XDG_RUNTIME_DIR/omp-app-access` (here, under `run/`, only when that variable is unset). |
+| `speech-to-text.json` | Voice input's settings: the transcription servers with their keys (readable by your account only; keys are never sent to a page), the language, the words to recognise and how long recordings are kept. |
+| `voice/<id>/` | One recording of voice input: `audio.wav` (the whole recording, once every part is in), `transcript.md` (its text, when it was made and how long it is), each part as `<n>.wav`, and `recording.json` (each part's state). Removed after the days Settings keeps them (14 by default), or by **Delete** in Recent recordings. |
 
 Chats themselves are not here. omp keeps them in its own session files under `~/.omp/agent/sessions`, and the app keeps no copy of them, only the caches above.
 
@@ -166,6 +168,22 @@ Chats themselves are not here. omp keeps them in its own session files under `~/
 | `~/.local/share/omp-app/desktop-window` | The window's own web data: the pairing key (a cookie) and the pages' settings. Under `$XDG_DATA_HOME` when that is an absolute path. |
 
 A file the window saves ("Download" in the Files panel, or **Save debug log**, for example) goes to your Downloads folder: the one named in `~/.config/user-dirs.dirs`, or `~/Downloads` when that is missing. It does not go to the folder the window was started from.
+
+## How do I run a transcription server for voice input?
+
+Voice input sends what you say to a speech recognition server you run, which omp-app does not include. It speaks two APIs (Settings → App → **Voice input** → **Add a server**):
+
+- **Chat with audio**: an OpenAI-style `/v1/chat/completions` that takes `input_audio`, as llama.cpp's `llama-server` does. It runs Qwen3-ASR (good at Chinese and English mixed in one sentence) on a small GPU, or slowly on the CPU. With llama.cpp built (with CUDA for an NVIDIA GPU: [llama.cpp's build guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md)):
+
+  ```bash
+  # Downloads the model and its audio part from Hugging Face the first time, then serves it on port 8080.
+  llama-server -hf ggml-org/Qwen3-ASR-1.7B-GGUF:Q8_0 -ngl 99 -np 2 --host 0.0.0.0 --port 8080
+  ```
+
+  `-ngl 99` puts the whole model on the GPU, and `-np 2` lets it take two parts at once, as the app sends them. `ggml-org/Qwen3-ASR-0.6B-GGUF:Q8_0` is the smaller model, for a GPU with less memory. The server's address in Settings is then `http://<that computer>:8080/v1`.
+- **Transcriptions**: OpenAI's `/v1/audio/transcriptions`, as OpenAI's own API and vLLM serve it. Give the address, the model's name and the key.
+
+**Test** beside each server sends it a second of silence and says how long it took. Servers are tried in order: when one fails a part three times (2 and 8 seconds apart), the next one gets it. A part no server could transcribe keeps its audio for **Retry**.
 
 ## Which omp settings does the app read or change?
 

@@ -171,6 +171,8 @@ A server that takes over a running host compares the host's `hello` with its own
   | `launch-links.json` | Digests of earlier launch tokens, so an old link reads as expired rather than never printed |
   | `model-preferences.json` | Favorite and hidden models |
   | `app-look.json` | The look devices on Every device share (`app-look/store.ts`, V258) |
+  | `speech-to-text.json` | Voice input's servers (their keys never go to a page), language, words and kept days (`speech-to-text/settings.ts`, V259) |
+  | `voice/<id>/` | Voice input's recordings: each part as it came (`<n>.wav`), `recording.json` with each part's state, and once every part is in, `audio.wav` and `transcript.md` for agents to read. The queue (`speech-to-text/recordings.ts`) sends two parts at a time, tries each server three times before the next, takes up unfinished parts again at start, and sweeps recordings past the kept days once a day. The page keeps each part in IndexedDB until the server has it (`apps/ui/src/voice/local.ts`) |
   | `todos.json` | The dashboard's to-do list and its last 200 changes (`todos/store.ts`) |
   | `questions.json` | Every chat's questions that wait, from the chats' `question_record` events, and a scan of the last 30 days' session files at the first start (`questions/open-questions.ts`) |
   | `siyuan-copy.json` | The to-do list's copy in SiYuan: the address, the page, the copy's block and the API token (mode 0600; `todos/siyuan-mirror.ts`) |

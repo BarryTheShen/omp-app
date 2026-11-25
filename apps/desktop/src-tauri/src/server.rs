@@ -48,6 +48,8 @@ use crate::downloads;
 use crate::gstreamer::RegistryScan;
 #[cfg(target_os = "linux")]
 use crate::keys;
+#[cfg(target_os = "linux")]
+use crate::media;
 use crate::remote;
 use crate::webdata;
 use crate::windows;
@@ -859,6 +861,9 @@ fn build_window(app: &AppHandle, label: &str, page: WebviewUrl) -> tauri::Result
     watch_page_loads(&window);
     #[cfg(target_os = "linux")]
     keys::forward_super_keys(&window);
+    // Voice input's microphone (V259): WebKitGTK refuses it unless the window allows it.
+    #[cfg(target_os = "linux")]
+    media::allow_microphone(&window);
     Ok(window)
 }
 

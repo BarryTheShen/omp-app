@@ -32,6 +32,7 @@ import {
   SessionFileStore,
   SessionImportPort,
   SessionPinStore,
+  SpeechToTextPort,
   serializeFrame,
   streamKey,
   ThreadId,
@@ -231,6 +232,17 @@ function createContext(
       set: async () => ({ look: {}, revision: "revision-2" }),
       subscribe: () => () => undefined,
     },
+    speechSettings: {
+      read: async () => ({
+        settings: { enabled: false, servers: [], language: "auto", context: "", keepDays: 14 },
+        revision: "revision-1",
+      }),
+      subscribe: () => () => undefined,
+    } as unknown as A1PortContext["speechSettings"],
+    speechRecordings: {
+      list: async () => [],
+      subscribe: () => () => undefined,
+    } as unknown as A1PortContext["speechRecordings"],
     secretStore: {
       list: async () => ({ hidden: false, secrets: [], others: 0, path: "/agent/secrets.yml" }),
       add: async () => ({ name: "API_KEY", placeholder: "$$APIKEY_2XUBD7NWOZ1U$$", length: 20 }),
@@ -468,6 +480,7 @@ describe("A1.9 port registrations", () => {
       SecretStore,
       SessionFileStore,
       SessionImportPort,
+      SpeechToTextPort,
       SessionPinStore,
       WorkspaceFilesPort,
       WorkspaceStatePort,

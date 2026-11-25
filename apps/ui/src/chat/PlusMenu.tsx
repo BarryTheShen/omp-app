@@ -1,4 +1,4 @@
-import { KeyRound, Paperclip, Pause, Play, Plus, Zap } from "lucide-react";
+import { History, KeyRound, Mic, Paperclip, Pause, Play, Plus, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -26,6 +26,7 @@ export function PlusMenu({
   onQuickPrompts,
   pause,
   queueLater,
+  voice,
 }: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -43,6 +44,8 @@ export function PlusMenu({
   readonly pause?: { readonly paused: boolean; readonly onPress: () => void };
   /** Queue for later's row (#14), whose own sheet opens over this one; once words are typed. */
   readonly queueLater?: ReactNode;
+  /** Voice input's rows, when it is on: start a recording, or open the recent ones. */
+  readonly voice?: { readonly onStart: () => void; readonly onRecent: () => void };
 }): ReactNode {
   /** A row's action closes the sheet first: what it opens takes the screen. */
   const act = (run: () => void) => () => {
@@ -82,6 +85,17 @@ export function PlusMenu({
         />
         <Row label="Secret" icon={<KeyRound />} tour="add-secret" onPress={act(onAddSecret)} />
         <Row label="Quick prompts" icon={<Zap />} onPress={act(onQuickPrompts)} />
+        {voice !== undefined && (
+          <>
+            <Row
+              label="Voice input"
+              icon={<Mic />}
+              tour="voice-input"
+              onPress={act(voice.onStart)}
+            />
+            <Row label="Recent recordings" icon={<History />} onPress={act(voice.onRecent)} />
+          </>
+        )}
         {queueLater}
         <fieldset
           aria-label="This chat"

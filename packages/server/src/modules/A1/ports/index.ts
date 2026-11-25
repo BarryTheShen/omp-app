@@ -23,6 +23,7 @@ import { createSecretStoreRegistration } from "./secret-store";
 import { createSessionFileStoreRegistration } from "./session-file-store";
 import { createSessionImportRegistration } from "./session-import";
 import { createSessionPinStoreRegistration } from "./session-pin-store";
+import { createSpeechToTextRegistration } from "./speech-to-text";
 import { createUrlCatalogRegistration } from "./url-catalog";
 import { createUsageLimitStoreRegistration } from "./usage-limits";
 import { createWorkspaceFilesRegistration } from "./workspace-files";
@@ -43,6 +44,7 @@ export function createA1PortRegistrations(context: A1PortContext): readonly Port
     createSessionPinStoreRegistration(context),
     createModelPreferenceStoreRegistration(context),
     createAppLookStoreRegistration(context),
+    createSpeechToTextRegistration(context),
     createSecretStoreRegistration(context),
     createAttachmentStoreRegistration(context),
     createSessionImportRegistration(context),

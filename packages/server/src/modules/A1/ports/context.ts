@@ -22,6 +22,7 @@ import type { RuleStoreService } from "../rules";
 import type { SecretStoreService } from "../secrets";
 import type { SessionImportStoreService } from "../session-import";
 import type { SessionFileStore } from "../sessions";
+import type { SpeechRecordings, SpeechSettingsStore } from "../speech-to-text";
 import type { UrlCatalogService } from "../url-catalog";
 import type { UsageLimitStoreService, UsageReadings } from "../usage-limits";
 import type { WorkspaceFilesService } from "../workspace-files";
@@ -39,6 +40,9 @@ export interface A1PortContext {
   readonly modelPreferenceStore: ModelPreferenceStoreService;
   /** The app's look for every device (V258), in the app's data folder. */
   readonly appLookStore: AppLookStoreService;
+  /** Voice input's settings and its recordings with their transcription queue (V259), in the app's data folder. */
+  readonly speechSettings: SpeechSettingsStore;
+  readonly speechRecordings: SpeechRecordings;
   /** omp's secrets for Hide Secrets, its `<agent folder>/secrets.yml`. */
   readonly secretStore: SecretStoreService;
   readonly providerAccountStore: ProviderAccountStoreService;

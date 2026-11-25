@@ -32,6 +32,8 @@ mod downloads;
 mod gstreamer;
 #[cfg(target_os = "linux")]
 mod keys;
+#[cfg(target_os = "linux")]
+mod media;
 mod relay;
 mod remote;
 mod server;

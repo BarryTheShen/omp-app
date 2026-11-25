@@ -3660,11 +3660,39 @@ const AGENTS_FOLLOWED_TOUR: Tour = {
   ],
 };
 
+const VOICE_TOUR: Tour = {
+  id: "voice-input-2026-11-25",
+  title: "Voice input",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Talk instead of typing",
+      text: "Settings → App → <b>Voice input</b> takes your own transcription server (llama.cpp's server with Qwen3-ASR, or any server with OpenAI's transcriptions); omp-app comes with no model. Then the message box has a microphone (Alt+V): the box turns into a recording bar, the text comes in as you pause, and <b>Done</b> puts it in the box.",
+      action: next,
+    },
+    {
+      target: null,
+      title: "Nothing said is lost",
+      text: "Each part is kept on this device until the server has it, and on the server with its audio. A part that couldn't be transcribed waits with <b>Retry</b>; a reload mid-recording keeps what was said. <b>Recent recordings</b> (right-click the microphone) lists them, with <b>Attach audio</b> to give the AI the recording itself.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-25-voice",
+    when: "2026-11-25T00:30:00Z",
+    summary:
+      "Voice input: a microphone in the message box sends what you say to your own transcription server, with Chinese and English mixed; the box becomes a recording bar, and Done puts the text in the box. Every part is kept until it is transcribed, and each recording stays on the server with its audio for the AI.",
+    tours: [VOICE_TOUR],
+  },
   {
     id: "2026-11-24-agents-followed",
     when: "2026-11-24T23:30:00Z",

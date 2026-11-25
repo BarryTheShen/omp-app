@@ -64,6 +64,7 @@ export const DEFAULT_HOST_CAPABILITIES = [
   "host.memory-store",
   "host.model-preferences",
   "host.app-look",
+  "host.speech-to-text",
   "host.plan-documents",
   "host.provider-accounts",
   "host.rules",

@@ -19,6 +19,7 @@ import { QuickPromptsSection } from "./QuickPromptsSection";
 import { SearchSection } from "./SearchSection";
 import { SetupSection } from "./SetupSection";
 import { SharingSection } from "./SharingSection";
+import { VoiceSection } from "./VoiceSection";
 import { WorkspacesSection } from "./WorkspacesSection";
 
 /**
@@ -98,6 +99,7 @@ export function AppPage({
         <ThemeGallery />
       </div>
       <WorkspacesSection />
+      <VoiceSection client={client} />
       <PushSection client={client} />
       {phone && <QuickPromptsSection />}
       <ServerSection focusLink={focusServerLink} />

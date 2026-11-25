@@ -292,6 +292,12 @@ const TABLE = {
     label: "Next thinking level",
   },
   model: { hotkey: "alt+p", scope: "box", group: "Message box", label: "Choose the model" },
+  voice: {
+    hotkey: "alt+v",
+    scope: "box",
+    group: "Message box",
+    label: "Voice input: start recording (Enter is Done, Esc cancels)",
+  },
   starModel: {
     hotkey: "alt+s",
     scope: "menu",

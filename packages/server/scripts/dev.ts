@@ -80,6 +80,7 @@ import { createSessionImportStore } from "../src/modules/A1/session-import";
 import { createServerSessionFileStore } from "../src/modules/A1/sessions";
 import { newestContinuableChat } from "../src/modules/A1/sessions/latest";
 import { sessionDisplayTitle } from "../src/modules/A1/sessions/title-card";
+import { SpeechRecordings, SpeechSettingsStore } from "../src/modules/A1/speech-to-text";
 import { createUrlCatalog, type UrlCatalogResourceInput } from "../src/modules/A1/url-catalog";
 import { createUsageLimitStore, UsageReadings, UsageShares } from "../src/modules/A1/usage-limits";
 import { createWorkspaceFiles } from "../src/modules/A1/workspace-files";
@@ -702,6 +703,12 @@ export async function createCompositionServer(
   });
   const modelPreferenceStore = new ModelPreferenceStoreService({ appDataDir });
   const appLookStore = new AppLookStoreService({ appDataDir });
+  const speechSettings = new SpeechSettingsStore({ appDataDir });
+  const speechRecordings = new SpeechRecordings({ settings: speechSettings, appDataDir, logger });
+  // Pieces a restart left untranscribed go back into the queue; old recordings are swept.
+  void speechRecordings
+    .start()
+    .catch((error) => logger.error("speech.start_failed", { error: String(error) }));
   const secretStore = new SecretStoreService({
     agentDir,
     hideSecrets: hideSecretsThrough(configStore),
@@ -793,6 +800,8 @@ export async function createCompositionServer(
     sessionPinStore,
     modelPreferenceStore,
     appLookStore,
+    speechSettings,
+    speechRecordings,
     secretStore,
     providerAccountStore,
     usageLimitStore,
@@ -1203,6 +1212,7 @@ export async function createCompositionServer(
           todos.stop();
           siyuanCopy.stop();
           chatIndex.stop();
+          speechRecordings.stop();
           questions.stop();
           await openQuestions.settled();
           await browserRuntime.stop();

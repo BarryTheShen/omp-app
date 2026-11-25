@@ -12,13 +12,14 @@ import type {
   GoalAnswer,
   PlanModeStatus,
 } from "@omp-app/contracts/chat-host";
-import { ArrowUp, FileText, KeyRound, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, FileText, KeyRound, Mic, Paperclip, Square, X } from "lucide-react";
 import {
   type KeyboardEvent,
   memo,
   type ReactNode,
   use,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -35,6 +36,7 @@ import {
 } from "../desktop/bridge";
 import { GoalChip } from "../goal/GoalChip";
 import { isImeEnter } from "../keys/ime";
+import { KEYS } from "../keys/table";
 import { EmbedContextChip } from "../lite/EmbedContextChip";
 import { LiteContext } from "../lite/LiteContext";
 import { sizeText } from "../panels/files/transfer";
@@ -44,7 +46,11 @@ import { PlanChip } from "../plan/PlanChip";
 import { AddSecretDialog } from "../secrets/AddSecretDialog";
 import { useSidewaysRow } from "../sidewaysRow";
 import { TodoPill } from "../todos/TodoPill";
+import { matchesHotkey } from "../tour/keys";
 import { onScreenKeyboard } from "../viewport";
+import { RecentRecordings } from "../voice/RecentRecordings";
+import { RecordingBar } from "../voice/RecordingBar";
+import { useVoice, useVoiceAvailable } from "../voice/useVoice";
 import { type AttachedFile, MAX_FILE_BYTES, pastesCopiedFiles } from "./attachedFiles";
 import { type Attachment, readImages } from "./attachments";
 import { type BoxToken, keepWhole, snapSelection, tokensIn } from "./boxTokens";
@@ -269,6 +275,19 @@ export const Composer = memo(function Composer({
   const lite = use(LiteContext);
   /** Whether the phone's ＋ sheet is open (`PlusMenu`). */
   const [plusOpen, setPlusOpen] = useState(false);
+  /**
+   * Voice input (V259): the mic shows while it is on, a transcription server is named and this browser can record. The
+   * page has one recording at a time; the box that started it shows the recording bar in its own place.
+   */
+  const voiceOwner = useId();
+  const voiceAvailable = useVoiceAvailable(controller.client);
+  const voice = useVoice(controller.client);
+  const recordingHere = voice.snapshot.phase !== "idle" && voice.snapshot.owner === voiceOwner;
+  const recordingElsewhere = voice.snapshot.phase !== "idle" && !recordingHere;
+  const [recentOpen, setRecentOpen] = useState(false);
+  const startVoice = (): void => {
+    if (!recordingElsewhere) void voice.session.start(voiceOwner);
+  };
   // On a phone the model chip is in the ＋ sheet: what opens the model menu (a failed request's "Switch model") opens
   // the sheet too, so the menu has its chip.
   useEffect(() => {
@@ -775,6 +794,11 @@ export const Composer = memo(function Composer({
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.nativeEvent.isComposing || isImeEnter(event)) return;
+    if (voiceAvailable && matchesHotkey(event.nativeEvent, KEYS.voice.hotkey)) {
+      event.preventDefault();
+      startVoice();
+      return;
+    }
     if (menu.menu !== null) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
@@ -995,6 +1019,43 @@ export const Composer = memo(function Composer({
       <TooltipContent>Add a secret: the AI sees only its placeholder</TooltipContent>
     </Tooltip>
   );
+  const micButton = voiceAvailable ? (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            type="button"
+            variant={phone ? "secondary" : "ghost"}
+            size={phone ? "icon" : "icon-sm"}
+            className={phone ? PHONE_BOX_KEY : "text-t3 hover:text-t1 tablet:size-11"}
+            aria-label="Voice input"
+            data-tour="voice-input"
+            disabled={closed || recordingElsewhere}
+            onClick={startVoice}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setRecentOpen(true);
+            }}
+          />
+        }
+      >
+        <Mic />
+      </TooltipTrigger>
+      <TooltipContent>Voice input (Alt+V) · right-click: recent recordings</TooltipContent>
+    </Tooltip>
+  ) : null;
+  /** A recording's text goes into the box after what is typed; Send then sends it, as the Send button would. */
+  const takeVoice = (spoken: string, andSend: boolean): void => {
+    const words = spoken.trim();
+    if (words !== "") {
+      const before = textRef.current;
+      const next = before === "" || /\s$/.test(before) ? before + words : `${before} ${words}`;
+      update(next);
+      setCaret(next.length);
+      caretLater(next, next.length, true);
+    }
+    if (andSend) send("auto");
+  };
   /**
    * The framing app's text in the lite view (#2845). On a phone the model and its level are behind ＋: the empty box
    * names them ("Claude Opus 5.5 · high"), on one line beside ⚡ and Send.
@@ -1121,285 +1182,334 @@ export const Composer = memo(function Composer({
             {status}
           </p>
         )}
+        {voiceAvailable && voice.snapshot.recovered.length > 0 && (
+          <p role="status" className="flex items-center gap-2 px-1 pb-1.5 text-xs text-t2">
+            <span className="min-w-0 flex-1">
+              A recording cut off by a reload was kept: its text is in Recent recordings.
+            </span>
+            <button
+              type="button"
+              className="underline underline-offset-2"
+              onClick={() => {
+                setRecentOpen(true);
+                voice.session.dismissRecovered();
+              }}
+            >
+              Open
+            </button>
+            <button
+              type="button"
+              className="text-t3 hover:text-t1"
+              aria-label="Dismiss"
+              onClick={() => voice.session.dismissRecovered()}
+            >
+              <X className="size-3.5" />
+            </button>
+          </p>
+        )}
         {lite !== null && <EmbedContextChip />}
         <ExtensionWidgets widgets={widgets} placement="aboveEditor" />
-        <form
-          data-tour="message-box"
-          // `--box-r`: the box's radius, which a style sets (looks.css) and a phone's keys follow (`PHONE_BOX_KEY`).
-          className={`composer-box relative rounded-[var(--box-r)] border bg-card [--box-r:var(--r-card)] ${dragging ? "border-primary" : "border-l2 focus-within:border-l4"}`}
-          onSubmit={(event) => {
-            event.preventDefault();
-            send("auto");
-          }}
-          onDragOver={(event) => {
-            if (!event.dataTransfer.types.includes("Files")) return;
-            event.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+        {recordingHere ? (
+          <RecordingBar
+            session={voice.session}
+            snapshot={voice.snapshot}
+            phone={phone}
+            onText={takeVoice}
+            onCancel={() => boxRef.current?.focus({ preventScroll: true })}
+            onRecent={() => setRecentOpen(true)}
+          />
+        ) : (
+          <form
+            data-tour="message-box"
+            // `--box-r`: the box's radius, which a style sets (looks.css) and a phone's keys follow (`PHONE_BOX_KEY`).
+            className={`composer-box relative rounded-[var(--box-r)] border bg-card [--box-r:var(--r-card)] ${dragging ? "border-primary" : "border-l2 focus-within:border-l4"}`}
+            onSubmit={(event) => {
+              event.preventDefault();
+              send("auto");
+            }}
+            onDragOver={(event) => {
+              if (!event.dataTransfer.types.includes("Files")) return;
+              event.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+                setDragging(false);
+            }}
+            onDrop={(event) => {
+              if (event.dataTransfer.files.length === 0) return;
+              event.preventDefault();
               setDragging(false);
-          }}
-          onDrop={(event) => {
-            if (event.dataTransfer.files.length === 0) return;
-            event.preventDefault();
-            setDragging(false);
-            addFiles([...event.dataTransfer.files]);
-          }}
-        >
-          {menu.menu !== null && (
-            <ComposerMenu
-              kind={menu.menu.kind}
-              label={menu.menu.label}
-              items={menu.menu.items}
-              active={menu.menu.active}
-              empty={menu.menu.empty}
-              onPick={take}
-            />
-          )}
-          {(attachments.length > 0 || files.length > 0) && (
-            // A phone keeps them on one row that scrolls sideways: the box stays low.
-            <ul
-              aria-label="Attachments"
-              className="flex flex-wrap gap-2 px-3 pt-3 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-2 max-sm:pt-2 max-sm:[scrollbar-width:none] max-sm:[&::-webkit-scrollbar]:hidden"
-            >
-              {attachments.map((attachment, place) => (
-                <li
-                  key={attachment.id}
-                  title={attachment.name}
-                  className="flex shrink-0 items-center gap-1.5 rounded-md border border-l2 bg-raise p-1 max-sm:py-0"
-                >
-                  <img
-                    src={`data:${attachment.image.mimeType};base64,${attachment.image.data}`}
-                    alt=""
-                    className="size-7 rounded-sm object-cover"
-                  />
-                  <span className="max-w-40 truncate text-xs text-t2">Image {place + 1}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className="text-t3 hover:text-t1"
-                    aria-label={`Remove Image ${place + 1}`}
-                    onClick={() => removePicture(place)}
-                  >
-                    <X />
-                  </Button>
-                </li>
-              ))}
-              {files.map((file) => (
-                <li
-                  key={file.id}
-                  className="flex shrink-0 items-center gap-1.5 rounded-md border border-l2 bg-raise p-1 max-sm:py-0"
-                >
-                  <span className="flex size-7 shrink-0 items-center justify-center rounded-sm bg-secondary text-t2">
-                    <FileText className="size-4" />
-                  </span>
-                  <span className="max-w-40 truncate text-xs text-t2">{file.name}</span>
-                  <span className="text-xs text-t3 tabular-nums">
-                    {file.progress === null ? file.size : `${Math.floor(file.progress * 100)}%`}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className="text-t3 hover:text-t1"
-                    aria-label={`Remove ${file.name}`}
-                    onClick={() => removeFile(file)}
-                  >
-                    <X />
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {pickerInput}
-          {secretDialog}
-          {phone && shellBadge !== false && <div className="flex px-3 pt-2">{shellBadge}</div>}
-          {/* ＋, the text, ⚡ and Send are a finger's 44 pt each: an even inset keeps them centred, the box no taller.
-              Longer text takes a row of its own above them (`tall`). */}
-          <div
-            className={
-              phone ? `flex items-end gap-1.5 p-[3px]${tall ? " flex-wrap" : ""}` : undefined
-            }
+              addFiles([...event.dataTransfer.files]);
+            }}
           >
-            {phone && (
-              <PlusMenu
-                open={plusOpen}
-                onOpenChange={setPlusOpen}
-                settings={settings}
-                closed={closed}
-                onAttach={() => picker.current?.click()}
-                onAddSecret={() => controller.addSecretToggle.show()}
-                onQuickPrompts={() => {
-                  setPanel(true);
-                  boxRef.current?.blur();
-                }}
-                queueLater={
-                  canQueue ? (
-                    <QueueLater
-                      phone
-                      disabled={closed || sending}
-                      onQueue={async (when) => {
-                        await queueLater(when);
-                        // The message left the box: the ＋ sheet it was queued from closes with its own.
-                        setPlusOpen(false);
-                      }}
-                    />
-                  ) : null
-                }
-                {...(working || pausedAt !== null
-                  ? {
-                      pause: {
-                        paused: pausedAt !== null,
-                        onPress: pausedAt !== null ? resume : pause,
-                      },
-                    }
-                  : {})}
+            {menu.menu !== null && (
+              <ComposerMenu
+                kind={menu.menu.kind}
+                label={menu.menu.label}
+                items={menu.menu.items}
+                active={menu.menu.active}
+                empty={menu.menu.empty}
+                onPick={take}
               />
             )}
-            {/* The references (`boxTokens.ts`) as chips behind the text: the same text, font, padding and wrapping, its
-                letters clear, each reference marked; it scrolls with the box. */}
+            {(attachments.length > 0 || files.length > 0) && (
+              // A phone keeps them on one row that scrolls sideways: the box stays low.
+              <ul
+                aria-label="Attachments"
+                className="flex flex-wrap gap-2 px-3 pt-3 max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:px-2 max-sm:pt-2 max-sm:[scrollbar-width:none] max-sm:[&::-webkit-scrollbar]:hidden"
+              >
+                {attachments.map((attachment, place) => (
+                  <li
+                    key={attachment.id}
+                    title={attachment.name}
+                    className="flex shrink-0 items-center gap-1.5 rounded-md border border-l2 bg-raise p-1 max-sm:py-0"
+                  >
+                    <img
+                      src={`data:${attachment.image.mimeType};base64,${attachment.image.data}`}
+                      alt=""
+                      className="size-7 rounded-sm object-cover"
+                    />
+                    <span className="max-w-40 truncate text-xs text-t2">Image {place + 1}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="text-t3 hover:text-t1"
+                      aria-label={`Remove Image ${place + 1}`}
+                      onClick={() => removePicture(place)}
+                    >
+                      <X />
+                    </Button>
+                  </li>
+                ))}
+                {files.map((file) => (
+                  <li
+                    key={file.id}
+                    className="flex shrink-0 items-center gap-1.5 rounded-md border border-l2 bg-raise p-1 max-sm:py-0"
+                  >
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-sm bg-secondary text-t2">
+                      <FileText className="size-4" />
+                    </span>
+                    <span className="max-w-40 truncate text-xs text-t2">{file.name}</span>
+                    <span className="text-xs text-t3 tabular-nums">
+                      {file.progress === null ? file.size : `${Math.floor(file.progress * 100)}%`}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="text-t3 hover:text-t1"
+                      aria-label={`Remove ${file.name}`}
+                      onClick={() => removeFile(file)}
+                    >
+                      <X />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {pickerInput}
+            {secretDialog}
+            {phone && shellBadge !== false && <div className="flex px-3 pt-2">{shellBadge}</div>}
+            {/* ＋, the text, ⚡ and Send are a finger's 44 pt each: an even inset keeps them centred, the box no taller.
+              Longer text takes a row of its own above them (`tall`). */}
             <div
-              className={`relative w-full ${phone ? `min-w-0${tall ? " order-first basis-full" : ""}` : ""}`}
+              className={
+                phone ? `flex items-end gap-1.5 p-[3px]${tall ? " flex-wrap" : ""}` : undefined
+              }
             >
-              {marks.length > 0 && (
-                <div
-                  ref={marksRef}
-                  aria-hidden="true"
-                  className={`pointer-events-none absolute inset-0 overflow-y-auto whitespace-pre-wrap break-words text-transparent ${boxText}`}
-                >
-                  {marked(text, marks)}
-                </div>
-              )}
-              <textarea
-                ref={boxRef}
-                // Six lines at most on a phone, twelve on a computer, each plus its padding: a full box shows whole
-                // lines. A computer's also leaves its buttons in a short window (35% of it at most). A phone's empty
-                // box keeps its placeholder (the model's name) on one line: WebKit ignores `white-space` on
-                // `::placeholder`, so a long name wrapped and was cut by the box; it takes `placeholder-shown` instead.
-                className={`relative block w-full resize-none bg-transparent text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${boxText} ${phone ? "max-h-[calc(6lh_+_22px)] min-h-[1lh] min-w-0 placeholder:truncate placeholder-shown:truncate" : "max-h-[min(calc(12lh_+_1rem),35dvh)] min-h-[2lh]"}`}
-                aria-label="Message"
-                placeholder={
-                  closed
-                    ? "This chat could not be opened"
-                    : disabled
-                      ? "Opening the chat…"
-                      : readyPlaceholder
-                }
-                value={text}
-                rows={phone ? 1 : 2}
-                // The keyboard takes the quick panel's place.
-                onFocus={() => setPanel(false)}
-                onChange={(event) => {
-                  setError(null);
-                  // Typing makes what is in the box the text, wherever Up and Down had got to.
-                  browsing.current = null;
-                  const area = event.target;
-                  // An edit that touched part of a reference takes it whole (an input method's word in the making is left
-                  // to finish first). A picture stays as omp keeps it: one whose name is gone is left out of the message
-                  // when the text names others.
-                  const kept = (event.nativeEvent as InputEvent).isComposing
-                    ? null
-                    : keepWhole(
-                        textRef.current,
-                        area.value,
-                        area.selectionStart,
-                        tokensIn(textRef.current, knownMentions()),
-                      );
-                  if (kept !== null) {
-                    put(kept);
-                    return;
-                  }
-                  update(area.value);
-                  setCaret(area.selectionStart);
-                }}
-                onSelect={(event) => {
-                  // The caret never rests inside a reference, and a selection takes one whole or not at all.
-                  const area = event.currentTarget;
-                  const { selectionStart: start, selectionEnd: end } = area;
-                  const snapped = snapSelection(
-                    start,
-                    end,
-                    tokensIn(area.value, knownMentions()),
-                    lastCaret.current,
-                  );
-                  if (snapped.start !== start || snapped.end !== end)
-                    area.setSelectionRange(snapped.start, snapped.end, area.selectionDirection);
-                  lastCaret.current =
-                    area.selectionDirection === "backward" ? snapped.start : snapped.end;
-                  setCaret(snapped.start);
-                }}
-                onScroll={(event) => {
-                  if (marksRef.current !== null)
-                    marksRef.current.scrollTop = event.currentTarget.scrollTop;
-                }}
-                onKeyDown={onKeyDown}
-                onPaste={(event) => {
-                  const data = event.clipboardData;
-                  const files = [...data.files];
-                  const text = data.getData("text/plain");
-                  // A file manager's copy: its files' addresses, and their paths as text (#2833). Text copied from a page
-                  // or a program goes in as text, as before, also when a picture of it comes along (a spreadsheet's).
-                  const copied = pastesCopiedFiles(data.getData("text/uri-list"), text);
-                  if (files.length > 0 && (text === "" || copied)) {
-                    event.preventDefault();
-                    addFiles(files);
-                    return;
-                  }
-                  if (desktopBridge() === null || (text !== "" && !copied)) return;
-                  event.preventDefault();
-                  pasteFromWindow(event.currentTarget, text);
-                }}
-              />
-            </div>
-            {phone && tall && <span aria-hidden className="flex-1" />}
-            {phone && (
-              <QuickPromptsKey
-                open={panel}
-                onPress={() => {
-                  if (panel) {
-                    setPanel(false);
-                    // Within the tap, so the keyboard comes back up.
-                    boxRef.current?.focus({ preventScroll: true });
-                  } else {
+              {phone && (
+                <PlusMenu
+                  open={plusOpen}
+                  onOpenChange={setPlusOpen}
+                  settings={settings}
+                  closed={closed}
+                  onAttach={() => picker.current?.click()}
+                  onAddSecret={() => controller.addSecretToggle.show()}
+                  onQuickPrompts={() => {
                     setPanel(true);
                     boxRef.current?.blur();
+                  }}
+                  queueLater={
+                    canQueue ? (
+                      <QueueLater
+                        phone
+                        disabled={closed || sending}
+                        onQueue={async (when) => {
+                          await queueLater(when);
+                          // The message left the box: the ＋ sheet it was queued from closes with its own.
+                          setPlusOpen(false);
+                        }}
+                      />
+                    ) : null
                   }
-                }}
-              />
-            )}
-            {phone && sendOrStop}
-          </div>
-          {!phone && (
-            // One row at any width, Send at its end (#2845's narrow side panels): the row is a container, so when it
-            // is short of room the model's name shortens, and below 22rem the thinking level and Plan show only
-            // their icons (`ThinkingMenu`, `PlanChip`). Narrower still (a side bar of 160 px) the controls scroll
-            // sideways and Send keeps its place; 3 px inside the scroller keep the focus rings whole.
-            <div className="@container flex min-w-0 items-center gap-1 px-2 pb-2">
-              <div
-                ref={controlsRow}
-                className="row-scroll -m-[3px] flex min-w-0 items-center gap-1 p-[3px]"
-              >
-                {attachButton}
-                {secretButton}
-                {shellBadge}
-                {settings}
-              </div>
-              <span
-                className="min-w-0 flex-1 truncate px-1 text-right text-xs text-t3"
-                role="status"
-              >
-                {error === null ? status : null}
-              </span>
-              {canQueue && (
-                <QueueLater phone={false} disabled={closed || sending} onQueue={queueLater} />
+                  {...(working || pausedAt !== null
+                    ? {
+                        pause: {
+                          paused: pausedAt !== null,
+                          onPress: pausedAt !== null ? resume : pause,
+                        },
+                      }
+                    : {})}
+                  {...(voiceAvailable
+                    ? { voice: { onStart: startVoice, onRecent: () => setRecentOpen(true) } }
+                    : {})}
+                />
               )}
-              {sendOrStop}
+              {/* The references (`boxTokens.ts`) as chips behind the text: the same text, font, padding and wrapping, its
+                letters clear, each reference marked; it scrolls with the box. */}
+              <div
+                className={`relative w-full ${phone ? `min-w-0${tall ? " order-first basis-full" : ""}` : ""}`}
+              >
+                {marks.length > 0 && (
+                  <div
+                    ref={marksRef}
+                    aria-hidden="true"
+                    className={`pointer-events-none absolute inset-0 overflow-y-auto whitespace-pre-wrap break-words text-transparent ${boxText}`}
+                  >
+                    {marked(text, marks)}
+                  </div>
+                )}
+                <textarea
+                  ref={boxRef}
+                  // Six lines at most on a phone, twelve on a computer, each plus its padding: a full box shows whole
+                  // lines. A computer's also leaves its buttons in a short window (35% of it at most). A phone's empty
+                  // box keeps its placeholder (the model's name) on one line: WebKit ignores `white-space` on
+                  // `::placeholder`, so a long name wrapped and was cut by the box; it takes `placeholder-shown` instead.
+                  className={`relative block w-full resize-none bg-transparent text-t1 outline-none [field-sizing:content] placeholder:text-t3 ${boxText} ${phone ? "max-h-[calc(6lh_+_22px)] min-h-[1lh] min-w-0 placeholder:truncate placeholder-shown:truncate" : "max-h-[min(calc(12lh_+_1rem),35dvh)] min-h-[2lh]"}`}
+                  aria-label="Message"
+                  placeholder={
+                    closed
+                      ? "This chat could not be opened"
+                      : disabled
+                        ? "Opening the chat…"
+                        : readyPlaceholder
+                  }
+                  value={text}
+                  rows={phone ? 1 : 2}
+                  // The keyboard takes the quick panel's place.
+                  onFocus={() => setPanel(false)}
+                  onChange={(event) => {
+                    setError(null);
+                    // Typing makes what is in the box the text, wherever Up and Down had got to.
+                    browsing.current = null;
+                    const area = event.target;
+                    // An edit that touched part of a reference takes it whole (an input method's word in the making is left
+                    // to finish first). A picture stays as omp keeps it: one whose name is gone is left out of the message
+                    // when the text names others.
+                    const kept = (event.nativeEvent as InputEvent).isComposing
+                      ? null
+                      : keepWhole(
+                          textRef.current,
+                          area.value,
+                          area.selectionStart,
+                          tokensIn(textRef.current, knownMentions()),
+                        );
+                    if (kept !== null) {
+                      put(kept);
+                      return;
+                    }
+                    update(area.value);
+                    setCaret(area.selectionStart);
+                  }}
+                  onSelect={(event) => {
+                    // The caret never rests inside a reference, and a selection takes one whole or not at all.
+                    const area = event.currentTarget;
+                    const { selectionStart: start, selectionEnd: end } = area;
+                    const snapped = snapSelection(
+                      start,
+                      end,
+                      tokensIn(area.value, knownMentions()),
+                      lastCaret.current,
+                    );
+                    if (snapped.start !== start || snapped.end !== end)
+                      area.setSelectionRange(snapped.start, snapped.end, area.selectionDirection);
+                    lastCaret.current =
+                      area.selectionDirection === "backward" ? snapped.start : snapped.end;
+                    setCaret(snapped.start);
+                  }}
+                  onScroll={(event) => {
+                    if (marksRef.current !== null)
+                      marksRef.current.scrollTop = event.currentTarget.scrollTop;
+                  }}
+                  onKeyDown={onKeyDown}
+                  onPaste={(event) => {
+                    const data = event.clipboardData;
+                    const files = [...data.files];
+                    const text = data.getData("text/plain");
+                    // A file manager's copy: its files' addresses, and their paths as text (#2833). Text copied from a page
+                    // or a program goes in as text, as before, also when a picture of it comes along (a spreadsheet's).
+                    const copied = pastesCopiedFiles(data.getData("text/uri-list"), text);
+                    if (files.length > 0 && (text === "" || copied)) {
+                      event.preventDefault();
+                      addFiles(files);
+                      return;
+                    }
+                    if (desktopBridge() === null || (text !== "" && !copied)) return;
+                    event.preventDefault();
+                    pasteFromWindow(event.currentTarget, text);
+                  }}
+                />
+              </div>
+              {phone && tall && <span aria-hidden className="flex-1" />}
+              {phone && (
+                <QuickPromptsKey
+                  open={panel}
+                  onPress={() => {
+                    if (panel) {
+                      setPanel(false);
+                      // Within the tap, so the keyboard comes back up.
+                      boxRef.current?.focus({ preventScroll: true });
+                    } else {
+                      setPanel(true);
+                      boxRef.current?.blur();
+                    }
+                  }}
+                />
+              )}
+              {phone && (micButton !== null && !typed && !working ? micButton : sendOrStop)}
             </div>
-          )}
-        </form>
+            {!phone && (
+              // One row at any width, Send at its end (#2845's narrow side panels): the row is a container, so when it
+              // is short of room the model's name shortens, and below 22rem the thinking level and Plan show only
+              // their icons (`ThinkingMenu`, `PlanChip`). Narrower still (a side bar of 160 px) the controls scroll
+              // sideways and Send keeps its place; 3 px inside the scroller keep the focus rings whole.
+              <div className="@container flex min-w-0 items-center gap-1 px-2 pb-2">
+                <div
+                  ref={controlsRow}
+                  className="row-scroll -m-[3px] flex min-w-0 items-center gap-1 p-[3px]"
+                >
+                  {attachButton}
+                  {micButton}
+                  {secretButton}
+                  {shellBadge}
+                  {settings}
+                </div>
+                <span
+                  className="min-w-0 flex-1 truncate px-1 text-right text-xs text-t3"
+                  role="status"
+                >
+                  {error === null ? status : null}
+                </span>
+                {canQueue && (
+                  <QueueLater phone={false} disabled={closed || sending} onQueue={queueLater} />
+                )}
+                {sendOrStop}
+              </div>
+            )}
+          </form>
+        )}
         <ExtensionWidgets widgets={widgets} placement="belowEditor" />
+        {voiceAvailable && (
+          <RecentRecordings
+            client={controller.client}
+            open={recentOpen}
+            onOpenChange={setRecentOpen}
+            onInsert={(spoken) => takeVoice(spoken, false)}
+            onAttach={(file) => addFiles([file])}
+          />
+        )}
         {phone && panel && (
           <QuickPanel
             history={history}
