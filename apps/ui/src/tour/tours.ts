@@ -3711,11 +3711,33 @@ const VOICE_PAUSE_TOUR: Tour = {
   ],
 };
 
+const VOICE_SILENCE_TOUR: Tour = {
+  id: "voice-silence-2026-11-25",
+  title: "No words from silence",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Only what you said",
+      text: "A part of a recording with almost no sound in it (a tap, a breath) is no longer sent to be transcribed: speech models wrote a whole made-up sentence for one. On a phone the recording bar now fits the screen, Done included.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-25-voice-silence",
+    when: "2026-11-25T23:30:00Z",
+    summary:
+      "Voice input writes only what you said: a part with almost no sound is not transcribed (the model made up a sentence for silence). On a phone the recording bar fits the screen again, Done included.",
+    tours: [VOICE_SILENCE_TOUR],
+  },
   {
     id: "2026-11-25-voice-pause",
     when: "2026-11-25T13:00:00Z",

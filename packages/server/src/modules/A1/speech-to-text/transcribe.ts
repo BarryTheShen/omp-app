@@ -136,3 +136,31 @@ export function silentWav(ms: number): Uint8Array {
   view.setUint32(40, samples * 2, true);
   return bytes;
 }
+
+/** A 20 ms frame of a piece is loud enough to be speech above this RMS (of 32,767). */
+const SPEECH_RMS = 300;
+/**
+ * A piece with less loud sound than this is silence (a tap, a breath, the room) and is not transcribed: speech models
+ * write a whole made-up sentence for one. Measured on real pieces from an iPhone (2026-11-25): every spoken piece had
+ * 1,000 ms or more above `SPEECH_RMS`, the two that came back invented 60 and 180 ms.
+ */
+export const MIN_SPEECH_MS = 250;
+
+/** How many ms of a 16-bit mono WAV (44-byte header, as the pages send) are loud enough to be speech. */
+export function speechMs(wav: Uint8Array): number {
+  if (wav.length <= 44) return 0;
+  const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
+  const rate = view.getUint32(24, true) || 16000;
+  const frame = Math.max(1, Math.round(rate / 50));
+  const samples = Math.floor((wav.length - 44) / 2);
+  let loud = 0;
+  for (let start = 0; start + frame <= samples; start += frame) {
+    let sum = 0;
+    for (let index = start; index < start + frame; index++) {
+      const sample = view.getInt16(44 + index * 2, true);
+      sum += sample * sample;
+    }
+    if (Math.sqrt(sum / frame) > SPEECH_RMS) loud += 1;
+  }
+  return (loud * frame * 1000) / rate;
+}

@@ -142,11 +142,12 @@ export function RecordingBar({
   };
 
   return (
-    // The box's own frame, so the bar sits exactly where the box was.
+    // The box's own frame, so the bar sits exactly where the box was. `min-w-0`: a fieldset is never narrower than its
+    // content by default, so on a phone the row's buttons pushed Done past the screen's edge.
     <fieldset
       aria-label="Voice input"
       data-tour="voice-bar"
-      className="composer-box relative rounded-[var(--box-r)] border border-l4 bg-card [--box-r:var(--r-card)]"
+      className="composer-box relative min-w-0 rounded-[var(--box-r)] border border-l4 bg-card [--box-r:var(--r-card)]"
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.preventDefault();

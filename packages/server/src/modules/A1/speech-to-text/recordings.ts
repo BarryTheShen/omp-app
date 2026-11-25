@@ -15,7 +15,7 @@ import type { Logger } from "../../../logging";
 import type { ProcessTimer } from "../../../process/omp-process";
 import { resolveAppDataDir, writeFileAtomic } from "../fs";
 import type { SpeechSettingsStore } from "./settings";
-import { joinPieceTexts, silentWav, transcribe } from "./transcribe";
+import { joinPieceTexts, MIN_SPEECH_MS, silentWav, speechMs, transcribe } from "./transcribe";
 
 /** Each server gets this many tries for a piece, these waits apart, before the next server (or the piece fails). */
 const TRIES = 3;
@@ -362,6 +362,18 @@ export class SpeechRecordings {
         state: "failed",
         error: "The piece's audio is missing.",
       }));
+      return;
+    }
+    // Silence is not sent: the model would write a sentence nobody said. Its audio stays with the recording.
+    const loud = speechMs(wav);
+    if (loud < MIN_SPEECH_MS) {
+      await this.#update(recordingId, index, (piece) => ({
+        state: "done",
+        ms: piece.ms,
+        size: piece.size,
+        text: "",
+      }));
+      this.#logger?.info("speech.silent", { recording: recordingId, piece: index, loud_ms: loud });
       return;
     }
     const servers = await this.#settings.servers();

@@ -6,7 +6,7 @@ import type { SpeechRecording } from "@omp-app/contracts";
 import type { ProcessTimer } from "../../../process/omp-process";
 import { SpeechRecordings } from "./recordings";
 import { SpeechSettingsStore } from "./settings";
-import { cleanAsrText, joinPieceTexts, silentWav } from "./transcribe";
+import { cleanAsrText, joinPieceTexts, silentWav, speechMs } from "./transcribe";
 
 /** A timer the test moves: waits between tries and the 60 s timeout fire only when it advances past them. */
 class FakeTimer implements ProcessTimer {
@@ -140,9 +140,29 @@ function recordings(): SpeechRecordings {
   return made;
 }
 
-/** Sends a piece of `ms` of silence in chunks of at most `chunk` bytes. */
-async function send(store: SpeechRecordings, id: string, index: number, ms = 2000, chunk = 40_000) {
+/** A WAV as long as `silentWav(ms)`, holding a 220 Hz tone as loud as speech: what a spoken piece's level looks like. */
+function toneWav(ms: number): Uint8Array {
   const wav = silentWav(ms);
+  const view = new DataView(wav.buffer);
+  for (let index = 0; 44 + index * 2 < wav.length; index++)
+    view.setInt16(
+      44 + index * 2,
+      Math.round(3000 * Math.sin((2 * Math.PI * 220 * index) / 16000)),
+      true,
+    );
+  return wav;
+}
+
+/** Sends a spoken piece of `ms` (or silence) in chunks of at most `chunk` bytes. */
+async function send(
+  store: SpeechRecordings,
+  id: string,
+  index: number,
+  ms = 2000,
+  chunk = 40_000,
+  silent = false,
+) {
+  const wav = silent ? silentWav(ms) : toneWav(ms);
   let result = { received: 0, complete: false };
   for (let offset = 0; offset < wav.length; offset += chunk) {
     result = await store.putPiece({
@@ -279,6 +299,24 @@ describe("talking to a transcription server", () => {
 });
 
 describe("recordings", () => {
+  test("a silent piece is not sent to be transcribed: it is done with no text, and its audio stays", async () => {
+    const asr = fakeServer(() => json({ text: "《大鱼》是周杰伦演唱的一首歌曲" }));
+    stops.push(asr.stop);
+    await useServers([{ id: "gpu", url: asr.url, api: "transcriptions" }]);
+    const store = recordings();
+    await store.start();
+    await send(store, "quiet", 0, 2000, 40_000, true);
+    const done = await until(
+      () => pieceOf(store, "quiet", 0),
+      (piece) => piece?.state === "done",
+    );
+    expect(done).toMatchObject({ text: "", ms: 2000 });
+    expect(asr.seen).toHaveLength(0);
+    expect((await stat(join(dir, "voice", "quiet", "0.wav"))).size).toBe(silentWav(2000).length);
+    expect(speechMs(silentWav(2000))).toBe(0);
+    expect(speechMs(toneWav(2000))).toBe(2000);
+  });
+
   test("a piece sent in chunks is kept and transcribed; sending it again changes nothing", async () => {
     const asr = fakeServer(() => json({ text: "第一段 first piece" }));
     stops.push(asr.stop);
