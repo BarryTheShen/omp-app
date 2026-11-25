@@ -17,7 +17,8 @@ import { RATE } from "./wav";
  * Where a recording is:
  * - `starting`: the microphone is being asked for;
  * - `recording`;
- * - `stopped`: the microphone stopped by itself (iOS in the background, a headset unplugged); Continue goes on;
+ * - `paused`: Pause turned the microphone off; what was said is kept, and Resume goes on in the same recording;
+ * - `stopped`: the microphone stopped by itself (iOS in the background, a headset unplugged); Resume goes on;
  * - `finishing`: Done or Send was pressed, and the last pieces are on their way or being transcribed;
  * - `review`: every piece is in, and some could not be transcribed: they show with Retry, and Done takes the rest;
  * - `error`: the microphone could not start (refused, missing).
@@ -26,6 +27,7 @@ export type VoicePhase =
   | "idle"
   | "starting"
   | "recording"
+  | "paused"
   | "stopped"
   | "finishing"
   | "review"
@@ -157,9 +159,25 @@ export class VoiceSession {
     await this.#openMic();
   }
 
-  /** Goes on after the microphone stopped by itself, in the same recording. */
-  async continue(): Promise<void> {
-    if (this.#snapshot.phase !== "stopped") return;
+  /**
+   * Pauses: the microphone goes off (its light too), and what was said since the last piece is cut into one and sent,
+   * so its text comes in while paused. The clock stops; Done, Send and Cancel work as while recording.
+   */
+  pause(): void {
+    const id = this.#snapshot.recordingId;
+    if (this.#snapshot.phase !== "recording" || id === null) return;
+    const rest = this.#capture?.stop();
+    this.#capture = null;
+    this.#stopTimers();
+    if (rest !== undefined) this.#piece(id, rest);
+    this.#set({ phase: "paused", level: 0, ...this.#stretchEnded() });
+    void this.#wakeLock?.release().catch(() => undefined);
+    this.#wakeLock = null;
+  }
+
+  /** Goes on in the same recording, after Pause or after the microphone stopped by itself. */
+  async resume(): Promise<void> {
+    if (this.#snapshot.phase !== "paused" && this.#snapshot.phase !== "stopped") return;
     this.#set({ phase: "starting" });
     await this.#openMic();
   }

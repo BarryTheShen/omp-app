@@ -1,5 +1,5 @@
 import type { SpeechPiece } from "@omp-app/contracts";
-import { ArrowUp, Check, Loader2, Mic, RotateCcw, X } from "lucide-react";
+import { ArrowUp, Check, Loader2, Mic, Pause, RotateCcw, X } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { VoiceSession, VoiceSnapshot } from "./session";
@@ -65,9 +65,10 @@ function PieceText({
 
 /**
  * The message box while recording (V259): it takes the box's place at the box's height. Above, the text of each piece
- * as it comes; below, Cancel, the level line and timer, Send and Done. Done waits for the last pieces' text and puts
- * the whole text into the box; Send sends it at once. Cancel keeps the recording in Recent recordings. On a phone the
- * row spans the width and Done is a thumb's 56 pt.
+ * as it comes; below, Cancel, Pause, the level line and timer, Send and Done. Pause turns the microphone off and keeps
+ * the recording; Resume goes on in it. Done waits for the last pieces' text and puts the whole text into the box; Send
+ * sends it at once. Cancel keeps the recording in Recent recordings. On a phone the row spans the width and Done is a
+ * thumb's 56 pt.
  */
 export function RecordingBar({
   session,
@@ -116,22 +117,29 @@ export function RecordingBar({
   };
 
   const finishing = snapshot.phase === "finishing";
+  const paused = snapshot.phase === "paused";
   const status =
     snapshot.phase === "starting"
       ? "Starting the microphone…"
-      : snapshot.phase === "stopped"
-        ? "The microphone stopped (the phone locked, or another app took it)."
-        : snapshot.phase === "error"
-          ? (snapshot.error ?? "The microphone could not start.")
-          : finishing
-            ? snapshot.unsent > 0
-              ? `Sending the last ${snapshot.unsent === 1 ? "part" : `${snapshot.unsent} parts`}… they are saved on this device`
-              : "Writing out the last part…"
-            : snapshot.phase === "review"
-              ? "A part couldn't be transcribed. Retry it, or press Done to use the rest: the part stays in Recent recordings with its audio."
-              : snapshot.unsent > 1
-                ? `${snapshot.unsent} parts saved on this device; they go when the connection is back`
-                : null;
+      : paused
+        ? "Paused: the microphone is off. Resume to go on in the same recording."
+        : snapshot.phase === "stopped"
+          ? "The microphone stopped (the phone locked, or another app took it). Resume to go on."
+          : snapshot.phase === "error"
+            ? (snapshot.error ?? "The microphone could not start.")
+            : finishing
+              ? snapshot.unsent > 0
+                ? `Sending the last ${snapshot.unsent === 1 ? "part" : `${snapshot.unsent} parts`}… they are saved on this device`
+                : "Writing out the last part…"
+              : snapshot.phase === "review"
+                ? "A part couldn't be transcribed. Retry it, or press Done to use the rest: the part stays in Recent recordings with its audio."
+                : snapshot.unsent > 1
+                  ? `${snapshot.unsent} parts saved on this device; they go when the connection is back`
+                  : null;
+  const pauseOrResume = (): void => {
+    if (running) session.pause();
+    else if (paused || snapshot.phase === "stopped") void session.resume();
+  };
 
   return (
     // The box's own frame, so the bar sits exactly where the box was.
@@ -146,6 +154,14 @@ export function RecordingBar({
         } else if (event.key === "Enter" && !event.shiftKey && snapshot.phase !== "error") {
           event.preventDefault();
           finish(event.ctrlKey || event.metaKey);
+        } else if (
+          event.key.toLowerCase() === "p" &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey
+        ) {
+          event.preventDefault();
+          pauseOrResume();
         }
       }}
     >
@@ -193,15 +209,30 @@ export function RecordingBar({
           <X />
         </Button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          {snapshot.phase === "stopped" || snapshot.phase === "error" ? (
-            snapshot.phase === "stopped" ? (
+          {running && (
+            <Button
+              type="button"
+              variant="ghost"
+              size={phone ? "icon" : "icon-sm"}
+              className={`text-t2 hover:text-t1 ${phone ? "size-11" : "tablet:size-11"}`}
+              aria-label="Pause"
+              title="Pause (P): the microphone goes off; Resume goes on in the same recording"
+              onClick={pauseOrResume}
+            >
+              <Pause />
+            </Button>
+          )}
+          {paused || snapshot.phase === "stopped" || snapshot.phase === "error" ? (
+            paused || snapshot.phase === "stopped" ? (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => void session.continue()}
+                className={phone ? "h-11" : "tablet:h-11"}
+                title="Resume (P): go on in the same recording"
+                onClick={pauseOrResume}
               >
-                <Mic /> Continue
+                <Mic /> Resume
               </Button>
             ) : (
               <Button

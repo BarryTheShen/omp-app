@@ -127,6 +127,44 @@ realTest.describe("new UI voice input", () => {
   );
 
   realTest(
+    "Pause turns the microphone off and keeps the recording; Resume goes on in it, and Done puts both parts in the box",
+    async ({ realApp }) => {
+      const asr = await transcriber();
+      try {
+        const page = await realApp.open({ path: "/", context });
+        await turnOn(page, asr.url);
+        await startNewChat(page);
+        await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+        await page.getByRole("button", { name: "Voice input" }).click();
+        await expect(bar(page).getByText("Listening…")).toBeVisible({ timeout: 30_000 });
+        await page.waitForTimeout(2_500);
+        await bar(page).getByRole("button", { name: "Pause" }).click();
+        await expect(bar(page).getByText(/^Paused: the microphone is off/)).toBeVisible();
+        // What was said before Pause is written out while paused, and the clock holds still.
+        await expect(bar(page).getByText(TEXT)).toBeVisible({ timeout: 60_000 });
+        const clock = bar(page).locator("time");
+        const held = await clock.textContent();
+        await page.waitForTimeout(2_000);
+        await expect(clock).toHaveText(held ?? "");
+        expect(asr.calls()).toBe(1);
+
+        await bar(page).getByRole("button", { name: "Resume" }).click();
+        await expect(bar(page).getByRole("button", { name: "Pause" })).toBeVisible({
+          timeout: 30_000,
+        });
+        await page.waitForTimeout(2_500);
+        await bar(page).getByRole("button", { name: /^Done/ }).click();
+        await expect(bar(page)).toHaveCount(0, { timeout: 60_000 });
+        // One recording of two parts: the second joins the first.
+        await expect(box(page)).toHaveValue(`${TEXT}${TEXT}`);
+        expect(asr.calls()).toBe(2);
+      } finally {
+        await asr.close();
+      }
+    },
+  );
+
+  realTest(
     "a part the server could not transcribe stays with Retry, and Retry writes it out",
     async ({ realApp }) => {
       const asr = await transcriber();

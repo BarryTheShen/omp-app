@@ -3696,11 +3696,33 @@ const PDF_FAST_TOUR: Tour = {
   ],
 };
 
+const VOICE_PAUSE_TOUR: Tour = {
+  id: "voice-pause-2026-11-25",
+  title: "Pause a recording",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Stop for a moment, then go on",
+      text: "While voice input records, <b>Pause</b> (or P) turns the microphone off and stops the clock; what you said so far is written out meanwhile. <b>Resume</b> goes on in the same recording, and Done puts all of it in the box.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-25-voice-pause",
+    when: "2026-11-25T13:00:00Z",
+    summary:
+      "Voice input can pause: Pause (or P) turns the microphone off and keeps the recording, and Resume goes on in it; Done puts everything said in the box.",
+    tours: [VOICE_PAUSE_TOUR],
+  },
   {
     id: "2026-11-25-pdf-fast",
     when: "2026-11-25T03:00:00Z",
