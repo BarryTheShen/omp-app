@@ -191,6 +191,37 @@ realTest.describe("new UI: the Files panel", () => {
   );
 
   realTest(
+    "a #section link in a rendered Markdown file scrolls to its heading in the panel, in any script, and opens no tab",
+    async ({ realApp }) => {
+      const filler = Array.from(
+        { length: 80 },
+        (_, line) => `Line ${line} of the English part.`,
+      ).join("\n\n");
+      await writeFile(
+        join(realApp.folder, "guide.md"),
+        `# Guide\n\n[English](#english) · [中文](#中文) · [For AI agents](#for-ai-agents)\n\n## English\n\n${filler}\n\n## 中文\n\n中文部分。\n\n${filler}\n\n## For AI agents\n\nThe agents' part.\n`,
+      );
+      const page = await realApp.open({ path: "/" });
+      await openFiles(page);
+      await row(page, "guide.md").click();
+      const rendered = page.getByRole("region", { name: "Rendered" });
+      await expect(rendered).toBeVisible({ timeout: 30_000 });
+      const pages = page.context().pages().length;
+      for (const [link, heading] of [
+        ["For AI agents", "For AI agents"],
+        ["中文", "中文"],
+      ] as const) {
+        await rendered.getByRole("link", { name: link, exact: true }).click();
+        await expect(rendered.getByRole("heading", { name: heading, exact: true })).toBeInViewport({
+          timeout: 5_000,
+        });
+      }
+      expect(page.context().pages()).toHaveLength(pages);
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
     "a Markdown file is edited from its Rendered view: Edit opens the source to type in, and Rendered shows the saved text (#2794)",
     async ({ realApp }) => {
       await writeFile(join(realApp.folder, "tasks.md"), "# Tasks\n\n- [ ] first to do\n");

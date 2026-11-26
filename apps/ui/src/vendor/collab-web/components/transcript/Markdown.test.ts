@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { renderStreamingMarkdown } from "./Markdown";
+import { headingIndex, headingSlug, renderStreamingMarkdown } from "./Markdown";
 
 /** The transcript's markup for a whole text, as a finished message gets it. */
 const render = (text: string): string => renderStreamingMarkdown(text, { source: "", html: "" }).html;
@@ -22,5 +22,35 @@ describe("images in a reply", () => {
       expect(html).not.toContain("<a");
       expect(html).toContain("Image: x");
     }
+  });
+});
+
+describe("links to a heading of the same text", () => {
+  test("headings carry GitHub's anchors, in any script", () => {
+    expect(headingSlug("For AI agents")).toBe("for-ai-agents");
+    expect(headingSlug("中文")).toBe("中文");
+    expect(headingSlug("johnny: your server, and how to reach it with Tailscale")).toBe(
+      "johnny-your-server-and-how-to-reach-it-with-tailscale",
+    );
+    expect(headingSlug("Step 2 — `ssh` in")).toBe("step-2--ssh-in");
+    expect(render("## For **AI** agents")).toContain('<h2 data-heading="for-ai-agents">');
+  });
+
+  test("a #section link stays in the page, never a new tab", () => {
+    const html = render("[中文](#中文) · [For AI agents](#for-ai-agents)");
+    expect(html).toContain('<a href="#for-ai-agents" data-anchor="for-ai-agents">For AI agents</a>');
+    expect(html).toContain('data-anchor="中文"');
+    expect(html).not.toContain('target="_blank"');
+  });
+
+  test("the link finds its heading, repeated headings numbered as GitHub numbers them", () => {
+    const html = render("# Notes\n\none\n\n# Notes\n\ntwo\n\n## 中文\n\nthree");
+    const slugs = [...html.matchAll(/data-heading="([^"]*)"/g)].map((match) => match[1] ?? "");
+    expect(slugs).toEqual(["notes", "notes", "中文"]);
+    expect(headingIndex(slugs, "notes")).toBe(0);
+    expect(headingIndex(slugs, "notes-1")).toBe(1);
+    // A browser sends the fragment percent-encoded.
+    expect(headingIndex(slugs, encodeURIComponent("中文"))).toBe(2);
+    expect(headingIndex(slugs, "missing")).toBe(-1);
   });
 });

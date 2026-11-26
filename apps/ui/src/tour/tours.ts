@@ -3742,6 +3742,21 @@ const VOICE_DETECTOR_TOUR: Tour = {
   ],
 };
 
+const HEADING_LINKS_TOUR: Tour = {
+  id: "heading-links-2026-11-26",
+  title: "Links to a heading",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Links within a text",
+      text: "In a Markdown file shown in the Files panel, and in replies, a link to one of its own headings (such as <b>English · 中文 · For AI agents</b> at the top of a guide) now scrolls to that heading instead of doing nothing.",
+      action: next,
+    },
+  ],
+};
+
 const NEW_CHAT_LISTED_TOUR: Tour = {
   id: "new-chat-listed-2026-11-26",
   title: "A new chat is listed at once",
@@ -3799,6 +3814,13 @@ const OMP_19_1_1_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-26-heading-links",
+    when: "2026-11-26T23:20:00Z",
+    summary:
+      "A link to a heading of the same text (a guide's English · 中文 · For AI agents) scrolls to that heading, in a Markdown file's rendered view and in replies.",
+    tours: [HEADING_LINKS_TOUR],
+  },
   {
     id: "2026-11-26-new-chat-listed",
     when: "2026-11-26T23:00:00Z",

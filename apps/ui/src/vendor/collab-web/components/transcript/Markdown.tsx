@@ -77,6 +77,45 @@ function safeHref(href: string): string | null {
 	return null; // unknown scheme (javascript:, data:, …)
 }
 
+/**
+ * omp-app: a heading's anchor as GitHub writes it (github-slugger): lower case, punctuation dropped (letters and
+ * numbers of any script kept), spaces to hyphens. "For AI agents" → `for-ai-agents`, "中文" → `中文`. A repeated
+ * heading's `-1`, `-2` is counted where a link is followed (`headingFor`), so a streamed block renders as the whole.
+ */
+export function headingSlug(text: string): string {
+	return text
+		.trim()
+		.toLowerCase()
+		.replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
+		.replace(/ /g, "-");
+}
+
+/**
+ * omp-app: which of the headings (their `headingSlug`s, in order) a `#fragment` link names, GitHub's way: a repeated
+ * heading's anchor gets `-1`, `-2` in order. -1 when none.
+ */
+export function headingIndex(slugs: readonly string[], fragment: string): number {
+	let wanted: string;
+	try {
+		wanted = decodeURIComponent(fragment).toLowerCase();
+	} catch {
+		wanted = fragment.toLowerCase();
+	}
+	const seen = new Map<string, number>();
+	for (const [index, slug] of slugs.entries()) {
+		const count = seen.get(slug) ?? 0;
+		seen.set(slug, count + 1);
+		if ((count === 0 ? slug : `${slug}-${count}`) === wanted) return index;
+	}
+	return -1;
+}
+
+/** omp-app: the heading of `root` a `#fragment` link names (`headingIndex`). */
+function headingFor(root: Element, fragment: string): Element | null {
+	const headings = [...root.querySelectorAll("[data-heading]")];
+	return headings[headingIndex(headings.map((each) => each.getAttribute("data-heading") ?? ""), fragment)] ?? null;
+}
+
 const md = new Marked({
 	gfm: true,
 	renderer: {
@@ -86,8 +125,20 @@ const md = new Marked({
 			if (cleaned === "") return "";
 			return escapeHtml(unescapeHtml(cleaned));
 		},
+		// omp-app: a heading carries its anchor (`headingSlug`), so a `#section` link can reach it.
+		heading({ tokens, depth }) {
+			const inner = this.parser.parseInline(tokens);
+			const slug = headingSlug(unescapeHtml(inner.replace(/<[^>]*>/g, "")));
+			return `<h${depth} data-heading="${escapeHtml(slug)}">${inner}</h${depth}>\n`;
+		},
 		link({ href, title, tokens }) {
 			const inner = this.parser.parseInline(tokens);
+			// omp-app: a `#section` link goes to that heading of the same text (`clickIn`), in place, not to a new tab.
+			if (href.trim().startsWith("#")) {
+				const fragment = href.trim().slice(1);
+				const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+				return `<a href="#${escapeHtml(fragment)}" data-anchor="${escapeHtml(fragment)}"${titleAttr}>${inner}</a>`;
+			}
 			// A path or `file:` names a file of the chat's folder: the page has no address for it, so the app opens it
 			// in its own viewer, over its signed-in connection (#17). Nothing is shared on the network by a click.
 			if (isFileHref(href)) {
@@ -158,6 +209,13 @@ function clickIn(
 		event.preventDefault();
 		const href = fileLink.dataset.file;
 		if (href !== undefined) openFile?.(href);
+		return;
+	}
+	// omp-app: a `#section` link scrolls its own text to that heading; the page's address stays as it is.
+	const anchor = target?.closest("a[data-anchor]");
+	if (anchor instanceof HTMLAnchorElement) {
+		event.preventDefault();
+		headingFor(event.currentTarget, anchor.dataset.anchor ?? "")?.scrollIntoView({ block: "start", behavior: "smooth" });
 		return;
 	}
 	// omp-app: the setup's proposal, its block just before the button.
