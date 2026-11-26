@@ -92,6 +92,8 @@ class FakeChatHost implements OmpProcess {
   readonly refuse = new Map<string, number>();
   /** When set, the host's answer to `get_state` waits for this, like a host busy with a long request. */
   holdState: Promise<void> | undefined = undefined;
+  /** When set, the host answers `prompt` only after this, like omp preparing a turn (its memory recall) first. */
+  holdPrompt: Promise<void> | undefined = undefined;
   /** When set, `stop()` leaves the process open: a request the host has not answered is still pending after the stop. */
   keepPendingOnStop = false;
   /** When set, `start()` fails with it, like a host that cannot be spawned. */
@@ -180,6 +182,8 @@ class FakeChatHost implements OmpProcess {
       params: (message.params ?? {}) as Record<string, unknown>,
     };
     this.requests.push(request);
+    /** The host refused this request: a refused prompt gets no result and no settle. */
+    let refused = false;
     const respond = (): void => {
       if (request.method === "bash" && this.failBash) {
         this.send({
@@ -193,6 +197,7 @@ class FakeChatHost implements OmpProcess {
       const refusals = this.refuse.get(request.method) ?? 0;
       if (refusals > 0) {
         this.refuse.set(request.method, refusals - 1);
+        refused = true;
         this.send({
           kind: "response",
           id: request.id,
@@ -210,6 +215,12 @@ class FakeChatHost implements OmpProcess {
       void this.holdBash.then(respond);
     } else if (request.method === "get_state" && this.holdState !== undefined) {
       void this.holdState.then(respond);
+    } else if (request.method === "prompt" && this.holdPrompt !== undefined) {
+      void this.holdPrompt.then(() => {
+        respond();
+        if (!refused) this.#promptEvents(request);
+      });
+      return Promise.resolve();
     } else {
       respond();
     }
@@ -223,17 +234,20 @@ class FakeChatHost implements OmpProcess {
     ) {
       this.identity = this.nextIdentity;
     }
-    if (request.method === "prompt") {
-      this.emitEvent({
-        type: "prompt_result",
-        requestId: request.id,
-        agentInvoked: true,
-        status: "completed",
-        sessionSettled: false,
-      });
-      this.emitEvent({ type: "session_settled" });
-    }
+    if (request.method === "prompt" && !refused) this.#promptEvents(request);
     return Promise.resolve();
+  }
+
+  /** omp's result of a prompt it took, and the settle. */
+  #promptEvents(request: FakeRequest): void {
+    this.emitEvent({
+      type: "prompt_result",
+      requestId: request.id,
+      agentInvoked: true,
+      status: "completed",
+      sessionSettled: false,
+    });
+    this.emitEvent({ type: "session_settled" });
   }
 
   resultOf(request: FakeRequest): unknown {
@@ -669,6 +683,51 @@ describe("the chat session runtime: opening a chat", () => {
       sessionSettled: true,
     });
     expect(busy()).toBe(false);
+    await runtimeContext.processRegistry.closeAll();
+  });
+
+  test("a chat is busy from the prompt while omp prepares its turn, so the list shows it, and not busy once omp refuses it", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created);
+    const handlers = handlersFor(runtimeContext);
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const process = created[0];
+    if (process === undefined) throw new Error("missing fake host");
+    const busy = () => runtimeContext.processRegistry.busyOf(authorityThread);
+    const heard: boolean[] = [];
+    const stop = runtimeContext.processRegistry.onBusyChange((id, isBusy) => {
+      if (id === authorityThread) heard.push(isBusy);
+    });
+
+    // omp holds its answer while it prepares the turn: the chat is busy already, before omp's agent_start.
+    const prepared = Promise.withResolvers<void>();
+    process.holdPrompt = prepared.promise;
+    const sent = getHandler(handlers, "request")(
+      request(authorityThread, "prompt", { text: "hi" }),
+      call("one"),
+    );
+    await Bun.sleep(10);
+    expect(busy()).toBe(true);
+    expect(heard).toEqual([true]);
+    process.emitEvent({ type: "agent_start" });
+    prepared.resolve();
+    expect(await sent).toEqual({ resultFollows: true });
+    // The run started, then settled: the settle ends the mark, once.
+    expect(busy()).toBe(false);
+    expect(heard).toEqual([true, false]);
+
+    // omp refuses the prompt: no run follows, and the mark goes again.
+    process.holdPrompt = undefined;
+    process.refuse.set("prompt", 1);
+    await expect(
+      getHandler(handlers, "request")(
+        request(authorityThread, "prompt", { text: "again" }),
+        call("one"),
+      ),
+    ).rejects.toThrow();
+    expect(busy()).toBe(false);
+    expect(heard).toEqual([true, false, true, false]);
+    stop();
     await runtimeContext.processRegistry.closeAll();
   });
 

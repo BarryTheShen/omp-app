@@ -3742,6 +3742,21 @@ const VOICE_DETECTOR_TOUR: Tour = {
   ],
 };
 
+const NEW_CHAT_LISTED_TOUR: Tour = {
+  id: "new-chat-listed-2026-11-26",
+  title: "A new chat is listed at once",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Listed as you send",
+      text: "A new chat is in the chat list, marked working, as soon as you send its first message, also while omp still prepares its reply (it looks up your memories first). Before, it showed only once the reply began, which could take half a minute.",
+      action: next,
+    },
+  ],
+};
+
 const BOX_BUTTONS_TOUR: Tour = {
   id: "box-buttons-2026-11-26",
   title: "The message box's buttons",
@@ -3784,6 +3799,13 @@ const OMP_19_1_1_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-26-new-chat-listed",
+    when: "2026-11-26T23:00:00Z",
+    summary:
+      "A new chat is in the chat list, marked working, as soon as you send its first message, also while omp still prepares its reply; before, it showed only once the reply began.",
+    tours: [NEW_CHAT_LISTED_TOUR],
+  },
   {
     id: "2026-11-26-box-buttons",
     when: "2026-11-26T22:00:00Z",

@@ -116,6 +116,12 @@ interface ChatEntry {
   /** Events before the chat's own id is known (`#rekey`); published once it is. */
   readonly startupEvents: ChatSessionEvent[];
   rekeyed: boolean;
+  /**
+   * A prompt went to the host while the chat was idle and its run has not started yet (omp's `agent_start`): the chat
+   * is marked busy from the prompt, so the list shows it and its spinner while omp prepares the turn (its memory recall
+   * took up to 30 s, 2026-11-26). Cleared by `agent_start`, or by the mark being taken back when no run follows.
+   */
+  promptPending?: boolean;
   /** The methods the chat's host answers (`hello.methods`). */
   methods: readonly string[];
   /** The omp release the chat's host was built from (`hello.ompVersion`); undefined until its host has said hello. */
@@ -1341,11 +1347,34 @@ export class ChatSessionPortRuntime {
         params.value as ChatHostMethodMap[typeof method]["params"],
       );
     }
-    const result = await this.#send(
-      entry,
-      method,
-      params.value as ChatHostMethodMap[typeof method]["params"],
-    );
+    // Busy from the prompt, not from omp's `agent_start`: omp prepares a turn (its memory recall) before it starts, and
+    // the list and the spinner waited out that time with nothing to show for the chat.
+    const threadId = entry.bootstrap.threadId;
+    const markedFromPrompt =
+      method === "prompt" && this.#context.processRegistry.busyOf(threadId) === false;
+    if (markedFromPrompt) {
+      entry.promptPending = true;
+      this.#context.processRegistry.setBusy(threadId, true);
+    }
+    /** No run follows the prompt after all: the mark goes, unless the run started meanwhile. */
+    const unmark = (): void => {
+      if (!markedFromPrompt || entry.promptPending !== true) return;
+      entry.promptPending = false;
+      this.#context.processRegistry.setBusy(entry.bootstrap.threadId, false);
+    };
+    let result: unknown;
+    try {
+      result = await this.#send(
+        entry,
+        method,
+        params.value as ChatHostMethodMap[typeof method]["params"],
+      );
+    } catch (error) {
+      unmark();
+      throw error;
+    }
+    if (markedFromPrompt && (result as { readonly resultFollows?: unknown }).resultFollows !== true)
+      unmark();
     // The opt-in lasts for one process: a replaced one is told again (`#reapply`).
     if (method === "set_ask_dialog") {
       entry.askDialogOptedIn = (
@@ -2066,6 +2095,8 @@ export class ChatSessionPortRuntime {
     this.#usageResume?.onEvent(threadId, event);
     this.#context.usageShares?.onEvent(threadId, event);
     if (event.type === "agent_start") {
+      const entry = this.#entryOrUndefined(threadId);
+      if (entry !== undefined) entry.promptPending = false;
       this.#context.processRegistry.setBusy(threadId, true);
     } else if (
       event.type === "session_settled" ||
