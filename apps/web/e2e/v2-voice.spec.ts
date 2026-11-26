@@ -1,12 +1,10 @@
-import { writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type Browser, type BrowserContext, chromium, type Page } from "@playwright/test";
-import { expect, realTest, startNewChat } from "./real-omp";
+import { APP_ROOT, expect, realTest, startNewChat } from "./real-omp";
 
 /**
- * Voice input (V259) in Chrome with a fake microphone (its beeps) and a fake transcription server that speaks llama.cpp's
+ * Voice input (V259) in Chrome with a fake microphone playing a recorded voice and a fake transcription server that speaks llama.cpp's
  * chat API: the recording bar takes the box's place, Done puts the text in the box, a part that could not be transcribed
  * keeps its audio and Retry writes it out, a reload in the middle of a recording loses nothing, and the phone's bar has
  * a thumb's Done.
@@ -64,40 +62,13 @@ async function transcriber(): Promise<{
 }
 
 /**
- * 10 s of speech-like sound for the fake microphone (Chrome loops it): a voice of drifting pitch with its harmonics,
- * loud and soft four times a second like syllables. Chrome's own fake microphone only beeps, which the server takes for
- * silence and does not transcribe; a steady tone, noise suppression may take for the room.
+ * What the fake microphone says, looped by Chrome: a recorded voice (LibriSpeech 1272-128104-0001, CC BY 4.0). The
+ * server's speech detector sends a part to be transcribed only when it hears a voice, so Chrome's own beeps, or a
+ * made-up tone, would give no text at all.
  */
-function speechLikeWav(): string {
-  const rate = 16000;
-  const samples = rate * 10;
-  const bytes = Buffer.alloc(44 + samples * 2);
-  bytes.write("RIFF", 0, "latin1");
-  bytes.writeUInt32LE(36 + samples * 2, 4);
-  bytes.write("WAVEfmt ", 8, "latin1");
-  bytes.writeUInt32LE(16, 16);
-  bytes.writeUInt16LE(1, 20);
-  bytes.writeUInt16LE(1, 22);
-  bytes.writeUInt32LE(rate, 24);
-  bytes.writeUInt32LE(rate * 2, 28);
-  bytes.writeUInt16LE(2, 32);
-  bytes.writeUInt16LE(16, 34);
-  bytes.write("data", 36, "latin1");
-  bytes.writeUInt32LE(samples * 2, 40);
-  let phase = 0;
-  for (let index = 0; index < samples; index++) {
-    const time = index / rate;
-    phase += (2 * Math.PI * (160 + 60 * Math.sin(2 * Math.PI * 0.7 * time))) / rate;
-    const voice = Math.sin(phase) + 0.5 * Math.sin(2 * phase) + 0.3 * Math.sin(3 * phase);
-    const syllables = 0.55 + 0.45 * Math.sin(2 * Math.PI * 4 * time);
-    bytes.writeInt16LE(Math.round(9000 * syllables * voice), 44 + index * 2);
-  }
-  const file = join(tmpdir(), `omp-voice-speech-like-${process.pid}.wav`);
-  writeFileSync(file, bytes);
-  return file;
-}
+const VOICE = join(APP_ROOT, "packages/server/test/fixtures/speech-en.wav");
 
-/** Chrome with a fake microphone that "speaks" (`speechLikeWav`), the microphone allowed. */
+/** Chrome with a fake microphone that speaks (`VOICE`), the microphone allowed. */
 async function withMicrophone(): Promise<Browser> {
   return chromium.launch({
     channel: "chrome",
@@ -105,7 +76,7 @@ async function withMicrophone(): Promise<Browser> {
     args: [
       "--use-fake-device-for-media-stream",
       "--use-fake-ui-for-media-stream",
-      `--use-file-for-fake-audio-capture=${speechLikeWav()}`,
+      `--use-file-for-fake-audio-capture=${VOICE}`,
     ],
   });
 }

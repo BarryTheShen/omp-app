@@ -45,14 +45,54 @@ export function cleanAsrText(content: string): string {
   return text.replace(/<\/?asr_text>/g, "").trim();
 }
 
+/** The language Qwen3-ASR named (`language Portuguese`), from its text or from where llama-server moves it. */
+function namedLanguage(...parts: unknown[]): string | undefined {
+  for (const part of parts) {
+    if (typeof part !== "string") continue;
+    const named = /language\s+([A-Za-z]+)/.exec(part)?.[1];
+    if (named !== undefined && named !== "None") return named;
+  }
+  return undefined;
+}
+
+/** What a server heard in one piece. */
+export interface Heard {
+  readonly text: string;
+  /** The language the model named, when it names one (Qwen3-ASR over the chat API). */
+  readonly language?: string;
+  /** The answer ran to its length cap: a model repeating itself on noise, not speech. */
+  readonly looped: boolean;
+}
+
+/** The languages the model may name for each setting; `auto` takes any. Chinese includes Cantonese. */
+const LANGUAGES: Record<SpeechLanguage, readonly string[] | null> = {
+  auto: null,
+  zh: ["Chinese", "Cantonese"],
+  en: ["English"],
+  "zh-en": ["Chinese", "Cantonese", "English"],
+};
+
+/** Whether text the model says is in `named` is kept under the setting `language`; an unnamed language always is. */
+export function languageAllowed(language: SpeechLanguage, named: string | undefined): boolean {
+  const allowed = LANGUAGES[language];
+  return allowed === null || named === undefined || allowed.includes(named);
+}
+
+/** The most tokens a piece's answer may take: far above speech (about 6 a second), so only a loop reaches it. */
+function tokenCap(wav: Uint8Array): number {
+  const seconds = Math.max(0, wav.length - 44) / (16000 * 2);
+  return Math.ceil(40 + 12 * seconds);
+}
+
 /** Asks one server for one piece's text; throws, with the server's words, when it fails. */
-export async function transcribe(request: TranscribeRequest): Promise<string> {
+export async function transcribe(request: TranscribeRequest): Promise<Heard> {
   const { server } = request;
   if (server.api === "transcriptions") {
     const form = new FormData();
     form.set("file", new Blob([request.wav], { type: "audio/wav" }), "piece.wav");
     if (server.model !== "") form.set("model", server.model);
-    if (request.language !== "auto") form.set("language", request.language);
+    if (request.language === "zh" || request.language === "en")
+      form.set("language", request.language);
     if (request.context !== "") form.set("prompt", request.context);
     form.set("response_format", "json");
     const response = await request.fetch(`${base(server.url)}/audio/transcriptions`, {
@@ -64,7 +104,12 @@ export async function transcribe(request: TranscribeRequest): Promise<string> {
     if (!response.ok) throw await failure(response);
     const body = (await response.json()) as { text?: unknown };
     if (typeof body.text !== "string") throw new Error("The server's answer had no text.");
-    return cleanAsrText(body.text);
+    const language = namedLanguage(body.text);
+    return {
+      text: cleanAsrText(body.text),
+      ...(language === undefined ? {} : { language }),
+      looped: false,
+    };
   }
   const messages: unknown[] = [];
   if (request.context !== "") messages.push({ role: "system", content: request.context });
@@ -85,16 +130,27 @@ export async function transcribe(request: TranscribeRequest): Promise<string> {
       messages,
       temperature: 0,
       stream: false,
+      max_tokens: tokenCap(request.wav),
     }),
     signal: request.signal,
   });
   if (!response.ok) throw await failure(response);
   const body = (await response.json()) as {
-    choices?: { message?: { content?: unknown } }[];
+    choices?: {
+      message?: { content?: unknown; reasoning_content?: unknown };
+      finish_reason?: unknown;
+    }[];
   };
-  const content = body.choices?.[0]?.message?.content;
+  const choice = body.choices?.[0];
+  const content = choice?.message?.content;
   if (typeof content !== "string") throw new Error("The server's answer had no text.");
-  return cleanAsrText(content);
+  // llama-server moves Qwen3-ASR's "language X" out of the text into `reasoning_content`.
+  const language = namedLanguage(choice?.message?.reasoning_content, content);
+  return {
+    text: cleanAsrText(content),
+    ...(language === undefined ? {} : { language }),
+    looped: choice?.finish_reason === "length",
+  };
 }
 
 /**
@@ -135,32 +191,4 @@ export function silentWav(ms: number): Uint8Array {
   ascii(36, "data");
   view.setUint32(40, samples * 2, true);
   return bytes;
-}
-
-/** A 20 ms frame of a piece is loud enough to be speech above this RMS (of 32,767). */
-const SPEECH_RMS = 300;
-/**
- * A piece with less loud sound than this is silence (a tap, a breath, the room) and is not transcribed: speech models
- * write a whole made-up sentence for one. Measured on real pieces from an iPhone (2026-11-25): every spoken piece had
- * 1,000 ms or more above `SPEECH_RMS`, the two that came back invented 60 and 180 ms.
- */
-export const MIN_SPEECH_MS = 250;
-
-/** How many ms of a 16-bit mono WAV (44-byte header, as the pages send) are loud enough to be speech. */
-export function speechMs(wav: Uint8Array): number {
-  if (wav.length <= 44) return 0;
-  const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
-  const rate = view.getUint32(24, true) || 16000;
-  const frame = Math.max(1, Math.round(rate / 50));
-  const samples = Math.floor((wav.length - 44) / 2);
-  let loud = 0;
-  for (let start = 0; start + frame <= samples; start += frame) {
-    let sum = 0;
-    for (let index = start; index < start + frame; index++) {
-      const sample = view.getInt16(44 + index * 2, true);
-      sum += sample * sample;
-    }
-    if (Math.sqrt(sum / frame) > SPEECH_RMS) loud += 1;
-  }
-  return (loud * frame * 1000) / rate;
 }

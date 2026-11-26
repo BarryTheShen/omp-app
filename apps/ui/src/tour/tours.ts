@@ -3726,11 +3726,33 @@ const VOICE_SILENCE_TOUR: Tour = {
   ],
 };
 
+const VOICE_DETECTOR_TOUR: Tour = {
+  id: "voice-detector-2026-11-26",
+  title: "Only speech becomes text",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "Sounds are left out",
+      text: "Voice input now runs a speech detector over each part before it is transcribed: a cough, a dog, music or a click no longer comes back as a made-up sentence. Settings → App → Voice input → <b>Language</b> can name the languages you speak (Chinese and English mixed, say); text the model hears in another one is left out too.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-26-voice-detector",
+    when: "2026-11-26T04:00:00Z",
+    summary:
+      "Voice input transcribes only speech: a speech detector (Silero VAD, built in) leaves out parts that hold no voice, so sounds no longer come back as made-up text, and Language can name the languages you speak (text in another one is left out).",
+    tours: [VOICE_DETECTOR_TOUR],
+  },
   {
     id: "2026-11-25-voice-silence",
     when: "2026-11-25T23:30:00Z",

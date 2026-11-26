@@ -15,7 +15,8 @@ import type { Logger } from "../../../logging";
 import type { ProcessTimer } from "../../../process/omp-process";
 import { resolveAppDataDir, writeFileAtomic } from "../fs";
 import type { SpeechSettingsStore } from "./settings";
-import { joinPieceTexts, MIN_SPEECH_MS, silentWav, speechMs, transcribe } from "./transcribe";
+import { joinPieceTexts, languageAllowed, silentWav, transcribe } from "./transcribe";
+import { MIN_SPEECH_MS, speechMs } from "./vad";
 
 /** Each server gets this many tries for a piece, these waits apart, before the next server (or the piece fails). */
 const TRIES = 3;
@@ -58,6 +59,8 @@ export interface SpeechRecordingsOptions {
   readonly timer?: ProcessTimer;
   readonly now?: () => number;
   readonly logger?: Logger;
+  /** How many ms of a piece are a human voice (the speech detector; tests give their own). */
+  readonly speechMs?: (wav: Uint8Array) => Promise<number>;
 }
 
 export type SpeechRecordingsListener =
@@ -93,6 +96,7 @@ export class SpeechRecordings {
   readonly #timer: ProcessTimer;
   readonly #now: () => number;
   readonly #logger: Logger | undefined;
+  readonly #speechMs: (wav: Uint8Array) => Promise<number>;
   readonly #listeners = new Set<(change: SpeechRecordingsListener) => void>();
   /** Per recording, the chain its file changes wait on, so two changes never interleave. */
   readonly #locks = new Map<string, Promise<unknown>>();
@@ -112,6 +116,7 @@ export class SpeechRecordings {
     this.#timer = options.timer ?? SYSTEM_TIMER;
     this.#now = options.now ?? Date.now;
     this.#logger = options.logger;
+    this.#speechMs = options.speechMs ?? speechMs;
   }
 
   /** Puts back in the queue what a restart left untranscribed, and sweeps old recordings now and daily. */
@@ -364,16 +369,21 @@ export class SpeechRecordings {
       }));
       return;
     }
-    // Silence is not sent: the model would write a sentence nobody said. Its audio stays with the recording.
-    const loud = speechMs(wav);
-    if (loud < MIN_SPEECH_MS) {
+    // A part with no voice in it is not sent: the model writes a sentence for silence, a tap or a dog. Its audio
+    // stays with the recording.
+    const voice = await this.#speechMs(wav);
+    if (voice < MIN_SPEECH_MS) {
       await this.#update(recordingId, index, (piece) => ({
         state: "done",
         ms: piece.ms,
         size: piece.size,
         text: "",
       }));
-      this.#logger?.info("speech.silent", { recording: recordingId, piece: index, loud_ms: loud });
+      this.#logger?.info("speech.no_voice", {
+        recording: recordingId,
+        piece: index,
+        voice_ms: voice,
+      });
       return;
     }
     const servers = await this.#settings.servers();
@@ -386,9 +396,12 @@ export class SpeechRecordings {
         if (attempt > 0) await this.#sleep(WAITS_MS[attempt - 1] ?? 8_000);
         const started = this.#now();
         try {
-          const text = await this.#withTimeout((signal) =>
+          const heard = await this.#withTimeout((signal) =>
             transcribe({ server, wav, language, context, signal, fetch: this.#fetch }),
           );
+          // Text in a language the setting does not take is a guess at sounds (a sigh came back as Portuguese).
+          const kept = languageAllowed(language, heard.language) && !heard.looped;
+          const text = kept ? heard.text : "";
           await this.#update(recordingId, index, (piece) => ({
             state: "done",
             ms: piece.ms,
@@ -396,6 +409,13 @@ export class SpeechRecordings {
             text,
             server: server.name,
           }));
+          if (!kept)
+            this.#logger?.info("speech.left_out", {
+              recording: recordingId,
+              piece: index,
+              language: heard.language ?? "",
+              looped: heard.looped,
+            });
           this.#logger?.info("speech.transcribed", {
             recording: recordingId,
             piece: index,

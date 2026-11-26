@@ -38,7 +38,11 @@ export const SpeechServer = z.strictObject({
 });
 export type SpeechServer = z.infer<typeof SpeechServer>;
 
-export const SpeechLanguage = z.enum(["auto", "zh", "en"]);
+/**
+ * `auto` takes any language; `zh-en` Chinese and English mixed, and `zh` or `en` one alone. Text the model says is in
+ * a language the setting does not take is left out (a sound came back as Portuguese).
+ */
+export const SpeechLanguage = z.enum(["auto", "zh-en", "zh", "en"]);
 export type SpeechLanguage = z.infer<typeof SpeechLanguage>;
 
 export const SpeechSettings = z.strictObject({

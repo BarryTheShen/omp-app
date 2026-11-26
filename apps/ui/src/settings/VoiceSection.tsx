@@ -25,7 +25,8 @@ import { RecentRecordings } from "../voice/RecentRecordings";
 import { useVoiceSettings } from "../voice/useVoice";
 
 const LANGUAGES: readonly { value: SpeechLanguage; label: string }[] = [
-  { value: "auto", label: "As spoken (mixed is fine)" },
+  { value: "auto", label: "Any language" },
+  { value: "zh-en", label: "Chinese and English (mixed)" },
   { value: "zh", label: "Chinese" },
   { value: "en", label: "English" },
 ];
@@ -312,7 +313,8 @@ export function VoiceSection({ client }: { readonly client: AppClient }): ReactN
         <div className="min-w-0 flex-1">
           <p className="text-sm text-t1">Language</p>
           <p className="mt-0.5 text-xs text-t3">
-            As spoken keeps Chinese and English as you mix them.
+            The languages you speak. Text the model hears in another language is taken for sounds (a
+            cough, a sigh) and left out; Any language keeps all of it.
           </p>
         </div>
         <Choice

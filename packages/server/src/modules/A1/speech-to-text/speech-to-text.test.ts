@@ -6,7 +6,7 @@ import type { SpeechRecording } from "@omp-app/contracts";
 import type { ProcessTimer } from "../../../process/omp-process";
 import { SpeechRecordings } from "./recordings";
 import { SpeechSettingsStore } from "./settings";
-import { cleanAsrText, joinPieceTexts, silentWav, speechMs } from "./transcribe";
+import { cleanAsrText, joinPieceTexts, silentWav } from "./transcribe";
 
 /** A timer the test moves: waits between tries and the 60 s timeout fire only when it advances past them. */
 class FakeTimer implements ProcessTimer {
@@ -107,7 +107,7 @@ afterEach(async () => {
 
 async function useServers(
   servers: { id: string; url: string; api: "transcriptions" | "chat-audio"; key?: string | null }[],
-  extra: { keepDays?: number; context?: string; language?: "auto" | "zh" | "en" } = {},
+  extra: { keepDays?: number; context?: string; language?: "auto" | "zh-en" | "zh" | "en" } = {},
 ) {
   const { revision } = await settings.read();
   return settings.set({
@@ -129,12 +129,14 @@ async function useServers(
   });
 }
 
+/** Recordings with a stand-in speech detector: a piece with any sound is all voice, a silent one none. */
 function recordings(): SpeechRecordings {
   const made = new SpeechRecordings({
     settings,
     appDataDir: dir,
     timer,
     now: () => timer.now,
+    speechMs: async (wav) => (wav.subarray(44).some((byte) => byte !== 0) ? 1000 : 0),
   });
   stops.push(() => made.stop());
   return made;
@@ -299,7 +301,7 @@ describe("talking to a transcription server", () => {
 });
 
 describe("recordings", () => {
-  test("a silent piece is not sent to be transcribed: it is done with no text, and its audio stays", async () => {
+  test("a piece with no voice in it is not sent to be transcribed: it is done with no text, and its audio stays", async () => {
     const asr = fakeServer(() => json({ text: "《大鱼》是周杰伦演唱的一首歌曲" }));
     stops.push(asr.stop);
     await useServers([{ id: "gpu", url: asr.url, api: "transcriptions" }]);
@@ -313,8 +315,49 @@ describe("recordings", () => {
     expect(done).toMatchObject({ text: "", ms: 2000 });
     expect(asr.seen).toHaveLength(0);
     expect((await stat(join(dir, "voice", "quiet", "0.wav"))).size).toBe(silentWav(2000).length);
-    expect(speechMs(silentWav(2000))).toBe(0);
-    expect(speechMs(toneWav(2000))).toBe(2000);
+  });
+
+  test("text the model names in a language the setting does not take is left out, and so is an answer cut at its cap", async () => {
+    const answers = [
+      {
+        content: "Está praticamente reservado.",
+        reasoning_content: "language Portuguese",
+        finish_reason: "stop",
+      },
+      { content: "hello there", reasoning_content: "language English", finish_reason: "stop" },
+      {
+        content: "啊啊啊啊啊啊啊啊",
+        reasoning_content: "language Chinese",
+        finish_reason: "length",
+      },
+    ];
+    let call = 0;
+    const asr = fakeServer(() => {
+      const answer = answers[call++] ?? answers[0];
+      return json({
+        choices: [
+          {
+            message: { content: answer?.content, reasoning_content: answer?.reasoning_content },
+            finish_reason: answer?.finish_reason,
+          },
+        ],
+      });
+    });
+    stops.push(asr.stop);
+    await useServers([{ id: "gpu", url: asr.url, api: "chat-audio" }], { language: "zh-en" });
+    const store = recordings();
+    await store.start();
+    for (const index of [0, 1, 2]) {
+      await send(store, "mixed", index);
+      await until(
+        () => pieceOf(store, "mixed", index),
+        (piece) => piece?.state === "done",
+      );
+    }
+    const texts = await Promise.all([0, 1, 2].map((index) => pieceOf(store, "mixed", index)));
+    expect(texts.map((piece) => piece?.text)).toEqual(["", "hello there", ""]);
+    // A 2 s piece may take 40 + 12 × 2 tokens: far past speech, so only a loop reaches it.
+    expect((asr.seen[0]?.body as { max_tokens?: number } | undefined)?.max_tokens).toBe(64);
   });
 
   test("a piece sent in chunks is kept and transcribed; sending it again changes nothing", async () => {
