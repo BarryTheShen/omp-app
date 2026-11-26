@@ -2,8 +2,9 @@ import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
- * The new UI's plan mode and goal mode (`apps/ui`, under `/v2/`) on real omp: plan mode by its chip and Alt+Shift+P,
- * omp's proposal reviewed and approved; a goal set from the palette, paused, resumed and dropped.
+ * The new UI's plan mode and goal mode (`apps/ui`, under `/v2/`) on real omp: plan mode by Alt+Shift+P and its chip
+ * (on a computer the bar shows Plan only while it is on), omp's proposal reviewed and approved; a
+ * goal set from the palette, paused, resumed and dropped.
  */
 realTest.describe("new UI plan mode and goal mode", () => {
   realTest.setTimeout(240_000);
@@ -19,18 +20,29 @@ realTest.describe("new UI plan mode and goal mode", () => {
     page.getByRole("button", { name: "Plan", exact: true, pressed: false });
   const on = (page: Page) => page.getByRole("button", { name: "Plan", exact: true, pressed: true });
 
+  /**
+   * Plan mode on by Alt+Shift+P, which does nothing until the chat knows omp offers plan mode (its status comes a moment
+   * after the chat opens): pressed again until the chip shows it on, which it does at once once the key is taken.
+   */
+  async function planOn(page: Page): Promise<void> {
+    await expect(async () => {
+      if ((await on(page).count()) === 0) await box(page).press("Alt+Shift+KeyP");
+      await expect(on(page)).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+  }
+
   realTest(
     "plan mode by Alt+Shift+P and its chip; omp's plan is reviewed, approved and run, and names the chat",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await newChat(page);
-      await expect(off(page)).toBeVisible({ timeout: 30_000 });
-      // The chip shows a switch at once: omp's first answer after a chat opens takes seconds here.
+      await expect(off(page)).toHaveCount(0);
+      await planOn(page);
+      // Turned off by its chip, it leaves the bar; Alt+Shift+P turns it on again, shown at once.
+      await on(page).click();
+      await expect(on(page)).toHaveCount(0, { timeout: 1_000 });
+      await expect(off(page)).toHaveCount(0);
       await box(page).press("Alt+Shift+KeyP");
-      await expect(on(page)).toBeVisible({ timeout: 1_000 });
-      await box(page).press("Alt+Shift+KeyP");
-      await expect(off(page)).toBeVisible({ timeout: 1_000 });
-      await off(page).click();
       await expect(on(page)).toBeVisible({ timeout: 1_000 });
 
       await box(page).fill("plan_propose");
@@ -44,7 +56,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
 
       await review.getByRole("button", { name: "Approve" }).click();
       await expect(review).toHaveCount(0);
-      await expect(off(page)).toBeVisible({ timeout: 30_000 });
+      await expect(on(page)).toHaveCount(0, { timeout: 30_000 });
       // omp names the chat after the plan it runs.
       await expect(
         page
@@ -60,9 +72,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await newChat(page);
-      await expect(off(page)).toBeVisible({ timeout: 30_000 });
-      await off(page).click();
-      await expect(on(page)).toBeVisible({ timeout: 1_000 });
+      await planOn(page);
       await box(page).fill("plan_propose");
       await box(page).press("Enter");
       const review = page.getByRole("dialog", { name: "Plan ready for review" });
@@ -83,7 +93,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
       await listed.getByRole("button", { name: "Approve" }).click();
       await expect(review).toHaveCount(0);
       await expect(listed).toHaveCount(0);
-      await expect(off(page)).toBeVisible({ timeout: 30_000 });
+      await expect(on(page)).toHaveCount(0, { timeout: 30_000 });
       expect(realApp.problems).toEqual([]);
     },
   );
@@ -93,9 +103,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await newChat(page);
-      await expect(off(page)).toBeVisible({ timeout: 30_000 });
-      await off(page).click();
-      await expect(on(page)).toBeVisible({ timeout: 1_000 });
+      await planOn(page);
       await box(page).fill("plan_propose");
       await box(page).press("Enter");
       await expect(page.getByRole("dialog", { name: "Plan ready for review" })).toBeVisible({
@@ -153,9 +161,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
           ),
       });
       await newChat(page);
-      await expect(off(page)).toBeVisible({ timeout: 30_000 });
-      await off(page).click();
-      await expect(on(page)).toBeVisible({ timeout: 1_000 });
+      await planOn(page);
       await box(page).fill("plan_propose");
       await box(page).press("Enter");
       const review = page.getByRole("dialog", { name: "Plan ready for review" });
@@ -175,10 +181,13 @@ realTest.describe("new UI plan mode and goal mode", () => {
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await newChat(page);
-      await expect(off(page)).toBeVisible({ timeout: 30_000 });
+      // Once the chat knows plan mode (on, then off again), two switches in a row, the second before omp answered.
+      await planOn(page);
+      await box(page).press("Alt+Shift+KeyP");
+      await expect(on(page)).toHaveCount(0, { timeout: 1_000 });
       await box(page).press("Alt+Shift+KeyP");
       await box(page).press("Alt+Shift+KeyP");
-      await expect(off(page)).toBeVisible({ timeout: 1_000 });
+      await expect(on(page)).toHaveCount(0, { timeout: 1_000 });
       // Every state the chip shows from now on.
       await page.evaluate(() => {
         const seen: string[] = [];
@@ -201,7 +210,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
       await expect(page.getByRole("region", { name: "Transcript" })).toContainText("pong", {
         timeout: 60_000,
       });
-      await expect(off(page)).toBeVisible();
+      await expect(on(page)).toHaveCount(0);
       expect(
         await page.evaluate(() => (window as unknown as { planChip: string[] }).planChip),
       ).not.toContain("true");
@@ -224,14 +233,11 @@ realTest.describe("new UI plan mode and goal mode", () => {
         .first()
         .click();
       await expect(box(second)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
-      await expect(off(second)).toBeVisible({ timeout: 30_000 });
-
-      await off(first).click();
-      await expect(on(first)).toBeVisible({ timeout: 1_000 });
+      await planOn(first);
       await expect(on(second)).toBeVisible({ timeout: 5_000 });
       await on(second).click();
-      await expect(off(second)).toBeVisible({ timeout: 1_000 });
-      await expect(off(first)).toBeVisible({ timeout: 5_000 });
+      await expect(on(second)).toHaveCount(0, { timeout: 1_000 });
+      await expect(on(first)).toHaveCount(0, { timeout: 5_000 });
 
       expect(realApp.problems).toEqual([]);
     },

@@ -212,9 +212,10 @@ const MESSAGE_BOX_TOUR: Tour = {
       action: keys("thinkingLevel"),
     },
     {
-      target: part("plan"),
+      // On a computer the bar shows Plan only while it is on (2026-11-26): the key's step points at the box.
+      target: MESSAGE_BOX,
       title: "Plan mode",
-      text: "{planMode} turns plan mode on: omp plans first and you approve the plan before it changes anything. Try it.",
+      text: "{planMode} turns plan mode on: omp plans first and you approve the plan before it changes anything. Its button shows in the bar while it is on. Try it.",
       action: keys("planMode"),
     },
     {
@@ -3741,6 +3742,27 @@ const VOICE_DETECTOR_TOUR: Tour = {
   ],
 };
 
+const BOX_BUTTONS_TOUR: Tour = {
+  id: "box-buttons-2026-11-26",
+  title: "The message box's buttons",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: part("voice-input"),
+      title: "The microphone beside Send",
+      text: "Voice input sits just left of Send now. In the recording bar, the highlighted button at the end sends what you said at once (Ctrl+Enter); the ✓ before it puts the text in the box (Enter).",
+      action: next,
+    },
+    {
+      target: null,
+      title: "Plan and the keys",
+      text: "The Plan button shows only while plan mode is on: {planMode} or the palette turns it on. The keyboard button at the foot of the chat list, beside What's new, lists every key ({shortcuts}).",
+      action: next,
+    },
+  ],
+};
+
 /** The app runs omp 19.1.1 (2026-11-26). */
 const OMP_19_1_1_TOUR: Tour = {
   id: "omp-19-1-1",
@@ -3762,6 +3784,13 @@ const OMP_19_1_1_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-26-box-buttons",
+    when: "2026-11-26T22:00:00Z",
+    summary:
+      "The microphone sits just left of Send; in the recording bar the highlighted button at the end sends at once and ✓ before it puts the text in the box. Plan shows in the box only while it is on (Alt+Shift+P turns it on), and a keyboard button at the foot of the chat list shows every key.",
+    tours: [BOX_BUTTONS_TOUR],
+  },
   {
     id: "2026-11-26-omp-19-1-1",
     when: "2026-11-26T07:47:49Z",

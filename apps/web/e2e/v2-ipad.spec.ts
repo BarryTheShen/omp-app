@@ -56,7 +56,8 @@ realTest.describe("new UI on a tablet", () => {
 
       await tall(page.getByRole("button", { name: /^Model: / }));
       await tall(page.getByRole("button", { name: /^Thinking: / }));
-      await tall(page.getByRole("button", { name: "Plan", exact: true }));
+      // Plan shows only while it is on; the attach button stands for the row's icon buttons.
+      await square(page.getByRole("button", { name: "Attach files" }));
       await square(page.getByRole("button", { name: "Send" }));
       await square(page.getByRole("button", { name: "Copy this message" }));
       await square(page.getByRole("button", { name: "Usage", exact: true }));

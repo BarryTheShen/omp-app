@@ -15,6 +15,7 @@ import {
   Clock,
   Ellipsis,
   Gauge,
+  Keyboard,
   ListPlus,
   PanelLeftClose,
   Pause,
@@ -129,6 +130,7 @@ export function Sidebar({
   dashboardWaiting,
   onAddTodo,
   onWhatsNew,
+  onShortcuts,
   workspace,
   phone,
   connection,
@@ -165,6 +167,8 @@ export function Sidebar({
   readonly onAddTodo: (chat: TodoChat) => Promise<void>;
   /** Opens the What's new list: every update and its tours. */
   readonly onWhatsNew: () => void;
+  /** Opens the list of every key (also Ctrl+/ and the palette's "Show the keys"). */
+  readonly onShortcuts: () => void;
   /** For the What's new card, which starts a tour in the workspace. */
   readonly workspace: RefObject<WorkspaceHandle | null>;
   /** On a phone, where the side panel has no rail at the window's edge, its button sits here. */
@@ -538,10 +542,30 @@ export function Sidebar({
       ) : (
         <div className="px-1 pt-2">
           {connection}
-          {/* On a tablet the full-size buttons go on a row of their own under the theme switch: one row is too narrow. */}
-          <div className="flex items-center justify-between pt-1 tablet:flex-wrap tablet:gap-y-1">
+          {/* The buttons go on a row of their own under the theme switch when the list is too narrow for one row (a
+              tablet's full-size buttons, or a list narrower than theme switch and four buttons). */}
+          <div className="flex flex-wrap items-center justify-between gap-y-1 pt-1">
             <ThemeSwitch />
             <div className="flex items-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Keyboard shortcuts"
+                      aria-keyshortcuts="Control+/"
+                      className="text-t3 hover:text-t1 tablet:size-11"
+                      onClick={onShortcuts}
+                    />
+                  }
+                >
+                  <Keyboard />
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  Keyboard shortcuts · {keycap(KEYS.shortcuts)}
+                </TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger
                   render={

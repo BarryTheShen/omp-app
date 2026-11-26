@@ -97,7 +97,12 @@ realTest.describe("new UI lite view", () => {
       const sendButton = page.getByRole("button", { name: "Send" });
       const modelButton = page.getByRole("button", { name: /^Model: Fake Model/ });
       const thinking = page.getByRole("button", { name: /^Thinking: / });
-      const plan = page.getByRole("button", { name: "Plan" });
+      // The bar shows Plan only while it is on: on by Alt+Shift+P, once the chat knows plan mode.
+      const plan = page.getByRole("button", { name: "Plan", exact: true, pressed: true });
+      await expect(async () => {
+        if ((await plan.count()) === 0) await box(page).press("Alt+Shift+KeyP");
+        await expect(plan).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 30_000 });
       const middle = async (button: typeof sendButton): Promise<number> => {
         const at = await button.boundingBox();
         if (at === null) throw new Error("not shown");

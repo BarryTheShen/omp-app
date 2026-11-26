@@ -233,7 +233,7 @@ realTest.describe("new UI voice input", () => {
   );
 
   realTest(
-    "on a phone the mic is in Send's place on an empty box, and Done is a thumb's size",
+    "on a phone the mic is in Send's place on an empty box, and Send now, at the bar's end, is a thumb's size",
     async ({ realApp }) => {
       const asr = await transcriber();
       const phone = await browser.newContext({
@@ -251,13 +251,19 @@ realTest.describe("new UI voice input", () => {
         await expect(page.getByRole("button", { name: "Send" })).toHaveCount(0);
         await page.getByRole("button", { name: "Voice input" }).tap();
         const done = bar(page).getByRole("button", { name: /^Done/ });
+        const sendNow = bar(page).getByRole("button", { name: "Send now" });
         await expect(done).toBeVisible();
-        const size = await done.boundingBox();
+        const size = await sendNow.boundingBox();
         expect(size?.width ?? 0).toBeGreaterThanOrEqual(56);
+        // Send now is the last button of the bar, Done just before it.
+        expect(size?.x ?? 0).toBeGreaterThan(
+          (await done.boundingBox())?.x ?? Number.POSITIVE_INFINITY,
+        );
         await expect(bar(page).getByText("Listening…")).toBeVisible({ timeout: 30_000 });
-        // While recording (Pause shown too), every control of the bar is on the screen, Done whole.
+        // While recording (Pause shown too), every control of the bar is on the screen, both whole.
         await expect(bar(page).getByRole("button", { name: "Pause" })).toBeVisible();
         await expect(done).toBeInViewport({ ratio: 1 });
+        await expect(sendNow).toBeInViewport({ ratio: 1 });
         expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(
           0,
         );

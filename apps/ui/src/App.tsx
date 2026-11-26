@@ -641,6 +641,7 @@ function Shell({
         onAddTodo={addChatTodo}
         onStopRunning={stopRunning}
         onWhatsNew={showWhatsNew}
+        onShortcuts={showShortcuts}
         workspace={workspace}
         phone={phone}
         connection={

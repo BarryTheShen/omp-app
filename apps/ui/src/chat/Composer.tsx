@@ -924,6 +924,7 @@ export const Composer = memo(function Composer({
         status={planMode}
         disabled={disabled}
         onError={(failure) => setError(`Plan mode: ${errorText(failure)}`)}
+        onlyWhileOn={!phone}
       />
       <GoalChip controller={controller} goal={goal} />
     </>
@@ -1482,7 +1483,6 @@ export const Composer = memo(function Composer({
                   className="row-scroll -m-[3px] flex min-w-0 items-center gap-1 p-[3px]"
                 >
                   {attachButton}
-                  {micButton}
                   {secretButton}
                   {shellBadge}
                   {settings}
@@ -1496,6 +1496,8 @@ export const Composer = memo(function Composer({
                 {canQueue && (
                   <QueueLater phone={false} disabled={closed || sending} onQueue={queueLater} />
                 )}
+                {/* Voice input sits just left of Send: the two ways to say something, side by side. */}
+                {micButton}
                 {sendOrStop}
               </div>
             )}

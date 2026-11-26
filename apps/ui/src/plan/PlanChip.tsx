@@ -6,19 +6,25 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { ChatController } from "../chat/controller";
 
-/** omp's plan mode in the message box: pressed while it is on. Shown only where omp offers plan mode. */
+/**
+ * omp's plan mode in the message box: pressed while it is on. Shown only where omp offers plan mode; with
+ * `onlyWhileOn` (a computer's message bar, where the chip took room few use) only while it is on, so it can be
+ * seen and turned off. Alt+Shift+P, the palette and the phone's ＋ sheet turn it on.
+ */
 export function PlanChip({
   controller,
   status,
   disabled,
   onError,
+  onlyWhileOn = false,
 }: {
   readonly controller: ChatController;
   readonly status: PlanModeStatus | null;
   readonly disabled: boolean;
   readonly onError: (failure: unknown) => void;
+  readonly onlyWhileOn?: boolean;
 }): ReactNode {
-  if (status === null || !status.available) return null;
+  if (status === null || !status.available || (onlyWhileOn && !status.enabled)) return null;
   return (
     <Tooltip>
       <TooltipTrigger

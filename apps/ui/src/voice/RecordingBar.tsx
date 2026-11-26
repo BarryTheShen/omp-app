@@ -273,30 +273,31 @@ export function RecordingBar({
             </button>
           )}
         </div>
+        {/* Done, then Send at the end, the highlighted one: the usual last step is sending. */}
         <Button
+          ref={done}
           type="button"
           variant="outline"
           size={phone ? "icon" : "icon-sm"}
           className={phone ? "size-11" : "tablet:size-11"}
-          aria-label="Send now"
-          title="Send now (Ctrl+Enter): the text goes as a message once every part is in"
-          onClick={() => finish(true)}
-          disabled={finishing || snapshot.phase === "error"}
-        >
-          {finishing && sendAfter ? <Loader2 className="animate-spin" /> : <ArrowUp />}
-        </Button>
-        <Button
-          ref={done}
-          type="button"
-          variant="default"
-          size={phone ? "icon" : "icon-sm"}
-          className={phone ? "size-14 rounded-full" : "tablet:size-11"}
           aria-label="Done: put the text in the box"
           title="Done (Enter): the text goes into the box"
           onClick={() => finish(false)}
           disabled={finishing || snapshot.phase === "error"}
         >
           {finishing && !sendAfter ? <Loader2 className="animate-spin" /> : <Check />}
+        </Button>
+        <Button
+          type="button"
+          variant="default"
+          size={phone ? "icon" : "icon-sm"}
+          className={phone ? "size-14 rounded-full" : "tablet:size-11"}
+          aria-label="Send now"
+          title="Send now (Ctrl+Enter): the text goes as a message once every part is in"
+          onClick={() => finish(true)}
+          disabled={finishing || snapshot.phase === "error"}
+        >
+          {finishing && sendAfter ? <Loader2 className="animate-spin" /> : <ArrowUp />}
         </Button>
       </div>
     </fieldset>

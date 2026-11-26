@@ -36,10 +36,11 @@ realTest.describe("new UI lite view at a computer's layout", () => {
     async ({ realApp, browser }, testInfo) => {
       testInfo.setTimeout(240_000);
       const page = await openPanel(browser, realApp);
-      // The desktop box: attach, the model and plan mode in its bottom row; none of the phone's controls.
+      // The desktop box: attach, the model and voice input in its bottom row (Plan only while it is on); none of the
+      // phone's controls.
       await expect(page.getByRole("button", { name: "Attach files" })).toBeVisible();
       await expect(page.getByRole("button", { name: /^Model: Fake Model/ })).toBeVisible();
-      await expect(planChip(page, false)).toBeVisible();
+      await expect(planChip(page, false)).toHaveCount(0);
       await expect(page.getByRole("button", { name: "More" })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Quick prompts" })).toHaveCount(0);
       // A computer's sizes: Send and the header's buttons are not a finger's.
@@ -81,8 +82,12 @@ realTest.describe("new UI lite view at a computer's layout", () => {
     "plan mode is switched on and a plan approved in the panel",
     async ({ realApp, browser }) => {
       const page = await openPanel(browser, realApp);
-      await planChip(page, false).click();
-      await expect(planChip(page, true)).toBeVisible({ timeout: 5_000 });
+      // The bar shows no Plan while it is off; Alt+Shift+P turns it on once the chat knows plan mode (a moment after it
+      // opens), and the chip shows it on.
+      await expect(async () => {
+        if ((await planChip(page, true).count()) === 0) await box(page).press("Alt+Shift+KeyP");
+        await expect(planChip(page, true)).toBeVisible({ timeout: 2_000 });
+      }).toPass({ timeout: 30_000 });
       await box(page).fill("plan_propose");
       await box(page).press("Enter");
       const review = page.getByRole("dialog", { name: "Plan ready for review" });
@@ -90,7 +95,7 @@ realTest.describe("new UI lite view at a computer's layout", () => {
       await expectInPanel(review);
       await review.getByRole("button", { name: "Approve" }).click();
       await expect(review).toHaveCount(0);
-      await expect(planChip(page, false)).toBeVisible({ timeout: 30_000 });
+      await expect(planChip(page, true)).toHaveCount(0, { timeout: 30_000 });
       expect(realApp.problems).toEqual([]);
     },
   );
@@ -124,12 +129,13 @@ realTest.describe("new UI lite view at a computer's layout", () => {
       const send = await page.getByRole("button", { name: "Send" }).boundingBox();
       expect(send).not.toBeNull();
       if (send !== null) expect(send.x + send.width).toBeLessThanOrEqual(width);
-      // A control the row has no room for is reached by scrolling the row: Plan comes into view.
-      const plan = planChip(page, false);
-      await plan.scrollIntoViewIfNeeded();
-      const planPlace = await plan.boundingBox();
-      expect(planPlace).not.toBeNull();
-      if (planPlace !== null) expect(planPlace.x + planPlace.width).toBeLessThanOrEqual(width);
+      // A control the row has no room for is reached by scrolling the row: the thinking level comes into view.
+      const thinking = page.getByRole("button", { name: /^Thinking: / });
+      await thinking.scrollIntoViewIfNeeded();
+      const thinkingPlace = await thinking.boundingBox();
+      expect(thinkingPlace).not.toBeNull();
+      if (thinkingPlace !== null)
+        expect(thinkingPlace.x + thinkingPlace.width).toBeLessThanOrEqual(width);
       expect(realApp.problems).toEqual([]);
       await context.close();
     },
