@@ -597,7 +597,7 @@ export function Palette({
       <DialogContent
         data-tour="palette"
         showCloseButton={false}
-        className="top-1/4 translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl"
+        className="top-1/4 mt-0 gap-0 overflow-hidden p-0 sm:max-w-xl"
       >
         <DialogTitle className="sr-only">Palette</DialogTitle>
         <Command

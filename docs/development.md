@@ -152,6 +152,7 @@ The UI has one design system: colors, type, radii, easing and icons come from th
 - `apps/ui/src/styles/index.css` maps the tokens to Tailwind (`text-t2`, `bg-page`, `border-l2`, `text-accent-ink` and so on) and to shadcn's roles.
 - The palette themes are generated: edit `apps/ui/src/theme/palettes.ts`, then run `bun run --cwd apps/ui themes`, which writes the block between the palette-theme markers in `themes.css` (`apps/ui/scripts/write-themes.ts`). `apps/ui/src/theme/derive.test.ts` fails while the file and the palettes disagree, and `apps/ui/src/styles/themes.test.ts` checks the contrast of every theme.
 - Icons come from `lucide-react`, the fonts from `@fontsource-variable/geist` and `@fontsource-variable/geist-mono`, and the building blocks in `apps/ui/src/components/ui/` are shadcn-style components (`apps/ui/components.json`) on Base UI.
+- Something that floats over the app is placed by layout (insets and auto margins, as `dialog.tsx` and `alert-dialog.tsx` centre theirs), never moved by a `-50%` translate: half of an odd width or height is half a pixel, and the browser then draws the whole box, its text too, blurred. `apps/web/e2e/v2-dialog-checks.ts` checks the dialogs in Chromium and WebKit.
 
 ## Tests
 

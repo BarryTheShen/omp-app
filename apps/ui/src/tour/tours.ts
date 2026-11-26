@@ -3742,6 +3742,21 @@ const VOICE_DETECTOR_TOUR: Tour = {
   ],
 };
 
+const SHARP_DIALOGS_TOUR: Tour = {
+  id: "sharp-dialogs-2026-11-26",
+  title: "Sharp dialogs",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: null,
+      title: "No more blur",
+      text: "A question card opened wide, the keys, and every other window over the app are drawn sharp now. In a window of an odd size they used to sit half a pixel off, and their text came out blurred.",
+      action: next,
+    },
+  ],
+};
+
 const HEADING_LINKS_TOUR: Tour = {
   id: "heading-links-2026-11-26",
   title: "Links to a heading",
@@ -3814,6 +3829,13 @@ const OMP_19_1_1_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-26-sharp-dialogs",
+    when: "2026-11-26T23:30:00Z",
+    summary:
+      "A question card opened wide, and every other window over the app, is drawn sharp: they sat half a pixel off in a window of an odd size, and blurred.",
+    tours: [SHARP_DIALOGS_TOUR],
+  },
   {
     id: "2026-11-26-heading-links",
     when: "2026-11-26T23:20:00Z",

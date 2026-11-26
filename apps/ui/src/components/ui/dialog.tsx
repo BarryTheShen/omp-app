@@ -49,7 +49,9 @@ function DialogContent({
         className={cn(
           // Centred in the safe area (between the status bar and the home indicator, and between the screen's sides: the
           // Dynamic Island and the curved corners of a phone on its side), and no larger than it (all 0 on a desktop).
-          "fixed top-[calc(50%+(var(--safe-top)-var(--safe-bottom))/2)] left-[calc(50%+(var(--safe-left)-var(--safe-right))/2)] z-50 grid max-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom)-1rem)] w-[calc(100%-2rem-var(--safe-left)-var(--safe-right))] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 data-open:duration-[220ms] data-open:ease-(--out) data-closed:duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          // omp-app: centred by its insets and auto margins, never by a -50% shift: a shift of half an odd width or height
+          // lands on half a pixel, and the browser then draws the whole dialog, its text too, blurred (2026-11-26).
+          "fixed inset-0 top-(--safe-top) right-(--safe-right) bottom-(--safe-bottom) left-(--safe-left) m-auto h-fit z-50 grid max-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom)-1rem)] w-[calc(100%-2rem-var(--safe-left)-var(--safe-right))] gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 data-open:duration-[220ms] data-open:ease-(--out) data-closed:duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className,
         )}
         {...props}
