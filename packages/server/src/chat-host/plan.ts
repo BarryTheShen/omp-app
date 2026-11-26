@@ -16,8 +16,8 @@ import {
 import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
 import type { AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session-events";
 import { isMCPToolName } from "@oh-my-pi/pi-coding-agent/tools/builtin-names";
-import { writeDeviceDispatch } from "@oh-my-pi/pi-coding-agent/tools/resolve";
-import { PROPOSE_DEVICE_NAME } from "@oh-my-pi/pi-tui/tools/resolve";
+import { proposeDispatchDetails } from "@oh-my-pi/pi-coding-agent/tools/resolve";
+import { PROPOSE_COMMAND_NAME } from "@oh-my-pi/pi-tui/tools/resolve";
 import { prompt } from "@oh-my-pi/pi-utils";
 import type { ApprovePlanResult, PlanFile, PlanModeStatus } from "@omp-app/contracts/chat-host";
 import approvedPlanPrompt from "../../node_modules/@oh-my-pi/pi-coding-agent/src/prompts/system/plan-mode-approved.md" with {
@@ -101,14 +101,16 @@ export class PlanMode {
   }
 
   /**
-   * The model proposed its plan (a `write` to `xd://propose`). As at omp's review (`event-controller.ts:2229-2268`,
-   * `handlePlanApproval`), the turn stops at once, with no "aborted" line, so the model does not go on under the
-   * review (omp's plan prompt would have it plan on) and the plan can be approved.
+   * The model proposed its plan: the `propose` command, run directly or inside a `bash` call (omp 19.1; before it, a
+   * `write` to `xd://propose`). As at omp's review (`event-controller.ts:2430-2455` at 19.1.1, `handlePlanApproval`),
+   * the turn stops at once, with no "aborted" line, so the model does not go on under the review (omp's plan prompt
+   * would have it plan on) and the plan can be approved. A failed direct `propose` submitted nothing; a `bash` run is
+   * judged by the `propose` record's own exit status, not the shell's.
    */
   observe(event: AgentSessionEvent): void {
-    if (event.type !== "tool_execution_end" || event.isError) return;
-    const dispatch = writeDeviceDispatch(event.toolName, event.result);
-    if (dispatch?.tool !== PROPOSE_DEVICE_NAME || dispatch.mode !== "execute") return;
+    if (event.type !== "tool_execution_end") return;
+    if (event.isError && event.toolName === PROPOSE_COMMAND_NAME) return;
+    if (proposeDispatchDetails(event.toolName, event.result) === undefined) return;
     if (!this.#session.getPlanModeState()?.enabled) return;
     void this.#stopSilently().catch((error: unknown) =>
       this.#warn(
@@ -222,10 +224,11 @@ export class PlanMode {
     const previousState = session.getPlanModeState();
     if (previousState?.enabled) return;
     const previousTools = session.getEnabledToolNames();
-    const previousMounted = session.getMountedXdevToolNames();
+    const previousMounted = session.getMountedToolCommandNames();
     const previousRegistered = session.getAllToolNames();
-    // The plan is drafted with `write` and submitted by a `write` to `xd://propose`, so the built-in `write` stays; an
-    // extension's `write` cannot submit a plan and would break plan mode's read-only guard (`interactive-mode.ts:5170-5192`).
+    // The plan is drafted with `write` (and refined with `edit`), so the built-in `write` stays; an extension's `write`
+    // would break plan mode's read-only guard. `propose` needs no selection: omp presents it while plan mode is on
+    // (`interactive-mode.ts:6283-6301` at 19.1.1).
     const planTools = [
       ...new Set([
         ...previousTools.filter((name) => name !== "write"),

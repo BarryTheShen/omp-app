@@ -966,11 +966,7 @@ export async function createCompositionServer(
   // profile, shown in the Browser panel; none when no Chrome is found) or the user's Edge through omp's relay, run here
   // while chosen. Chosen in the panel: omp's `browser.cdpUrl` or `browser.relay`, every folder.
   const chrome = findChrome(env);
-  const edgeRelay = new EdgeRelay({
-    port: EDGE_RELAY_PORT,
-    tokenFile: join(appDataDir, "browser-relay-token"),
-    logger,
-  });
+  const edgeRelay = new EdgeRelay({ port: EDGE_RELAY_PORT, logger });
   const browserRuntime = createBrowserRuntime({
     browser:
       chrome === null

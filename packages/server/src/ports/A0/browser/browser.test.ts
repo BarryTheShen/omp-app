@@ -48,7 +48,6 @@ function relay() {
     refresh: async () => state(),
     state,
     carry: () => "not in these tests",
-    extensionToken: () => null,
   };
   return { did, host };
 }

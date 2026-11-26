@@ -485,9 +485,10 @@ function reply(request: Request): Reply {
       text: `both calls done; tool said: ${last?.role === "tool" ? text(last.content) : ""}`,
     };
   }
-  // Plan mode (#768): the model writes its plan to `local://<slug>-plan.md`, then submits the slug to `xd://propose`, as
-  // omp's plan prompt asks (`prompts/system/plan-mode-active.md` at 18.12.6). The run on the approved plan starts with
-  // omp's synthetic developer message, not a user message, so it is not this script's.
+  // Plan mode (#768): the model writes its plan to `local://<slug>-plan.md`, then submits the slug with the `propose`
+  // command, a `bash` command while `bash` is on (omp 19.1, `tools/index.ts` `SPECIAL_TOOL_NAMES`; before it, a write
+  // to `xd://propose`). The run on the approved plan starts with omp's synthetic developer message, not a user message,
+  // so it is not this script's.
   if (
     lastUser >= 0 &&
     text(messages[lastUser]?.content).includes("plan_propose") &&
@@ -503,8 +504,8 @@ function reply(request: Request): Reply {
       };
     if (done === 1)
       return {
-        tool: "write",
-        args: { path: "xd://propose", content: PLAN_SLUG },
+        tool: "bash",
+        args: { command: `propose ${PLAN_SLUG}` },
         id: "call_plan_propose",
         thinking: "The plan is ready, so I submit it.",
       };

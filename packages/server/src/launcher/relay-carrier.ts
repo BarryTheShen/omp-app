@@ -1,8 +1,11 @@
 /**
- * `omp-app relay <app address>`: the user's own browser for the app's chats, from the computer that browser runs on.
- * omp's relay extension connects only to `ws://127.0.0.1:<port>/ext` on its own computer; this listens there and
- * carries each connection to the app's server (`/browser-relay`) over the app's own address, as a paired device, so no
- * tunnel to the app's computer is needed. The server joins it to its relay, which takes the extension only that way.
+ * `omp-app relay <app address>`: the user's own browser for the app's chats, from the computer that browser runs on, as
+ * a paired device over the app's own address, so no tunnel to the app's computer is needed. It carries two kinds:
+ * - omp 19.1 and later: the browser's extension links to omp's native host, which serves the relay on this computer
+ *   while the browser runs; this links that relay to the app (`native-link.ts`), and the app's chats reach the browser
+ *   through it.
+ * - up to omp 19.0: the extension connects to `ws://127.0.0.1:<port>/ext` itself; this listens there and carries each
+ *   connection to the app's server (`/browser-relay`), which joins it to the app's relay.
  *
  * It pairs once with a one-time code and keeps its key in the state folder (owner-only), one per app address; the
  * device shows in Settings → App → Devices as "Browser relay on <computer>", where Remove ends it.
@@ -16,6 +19,7 @@ import {
   SOCKET_PROTOCOL,
 } from "@omp-app/contracts";
 import { z } from "zod";
+import { startNativeLink } from "./native-link";
 
 /** Each app address this computer's carrier paired with, and its key there. */
 const Keys = z.record(z.string(), z.strictObject({ deviceId: z.string(), key: z.string() }));
@@ -66,7 +70,7 @@ export async function pairRelay(
 export interface RelayCarrierOptions {
   /** The app's address, as an origin. */
   readonly server: string;
-  /** Where omp's relay extension connects on this computer. */
+  /** Where an extension from omp 19.0 or older connects on this computer. */
   readonly port: number;
   /** The keys file (`<state folder>/relay-keys.json`). */
   readonly keysFile: string;
@@ -76,11 +80,14 @@ export interface RelayCarrierOptions {
   readonly code: string | undefined;
   readonly askCode: () => Promise<string>;
   readonly say: (line: string) => void;
+  /** The relays omp's native hosts published on this computer, newest first (omp's discovery unless given). */
+  readonly endpoints?: () => string[];
 }
 
 /** A running carrier: `done` settles when it stops for good (its key removed, or `stop`). */
 export interface RelayCarrier {
-  readonly port: number;
+  /** The port an extension from omp 19.0 or older connects to; null when another program holds it. */
+  readonly port: number | null;
   readonly done: Promise<string>;
   stop(): void;
 }
@@ -90,7 +97,7 @@ interface CarriedData {
   waiting: (string | Uint8Array)[];
 }
 
-/** Pairs if needed, then carries the extension's connections until stopped; why it could not start, or the carrier. */
+/** Pairs if needed, then carries the browser until stopped; why it could not start, or the carrier. */
 export async function startRelayCarrier(
   options: RelayCarrierOptions,
 ): Promise<RelayCarrier | string> {
@@ -106,11 +113,24 @@ export async function startRelayCarrier(
   }
   const key = paired.key;
   const upstreamUrl = `${options.server.replace(/^http/, "ws")}/browser-relay`;
+  /** A socket to the app at `url`, signed in as this computer's device. */
+  const connect = (url: string): WebSocket => {
+    const socket = new WebSocket(url, {
+      headers: { Origin: options.server },
+      protocols: [SOCKET_PROTOCOL, `${SOCKET_DEVICE_PROTOCOL_PREFIX}${key}`],
+    } as unknown as string[]);
+    socket.binaryType = "arraybuffer";
+    return socket;
+  };
   let finish: (why: string) => void = () => undefined;
   const done = new Promise<string>((resolve) => {
     finish = resolve;
   });
-  let listener: ReturnType<typeof Bun.serve<CarriedData, never>>;
+  const unpaired = () =>
+    finish(
+      "This computer's browser relay is no longer paired with the app (removed in Settings → App → Devices). Run it again with a new code.",
+    );
+  let listener: ReturnType<typeof Bun.serve<CarriedData, never>> | null = null;
   try {
     listener = Bun.serve<CarriedData, never>({
       hostname: "127.0.0.1",
@@ -129,11 +149,7 @@ export async function startRelayCarrier(
       },
       websocket: {
         open(socket) {
-          const upstream = new WebSocket(upstreamUrl, {
-            headers: { Origin: options.server },
-            protocols: [SOCKET_PROTOCOL, `${SOCKET_DEVICE_PROTOCOL_PREFIX}${key}`],
-          } as unknown as string[]);
-          upstream.binaryType = "arraybuffer";
+          const upstream = connect(upstreamUrl);
           socket.data.upstream = upstream;
           upstream.onopen = () => {
             for (const data of socket.data.waiting.splice(0)) upstream.send(data);
@@ -147,9 +163,7 @@ export async function startRelayCarrier(
             );
           upstream.onclose = (event) => {
             if (event.code === 4401) {
-              finish(
-                "This computer's browser relay is no longer paired with the app (removed in Settings → App → Devices). Run it again with a new code.",
-              );
+              unpaired();
             } else if (event.code === 4409) {
               options.say(`The app turned the extension away: ${event.reason}`);
             }
@@ -170,10 +184,21 @@ export async function startRelayCarrier(
       },
     });
   } catch {
-    return `Port ${options.port} on 127.0.0.1 is taken: another relay runs on this computer (omp's own, or another carrier). Stop it, or give --port and the same port in the extension's options.`;
+    // A browser of omp 19.1 or later needs no port here; one of omp 19.0 or older cannot connect.
+    options.say(
+      `Port ${options.port} on 127.0.0.1 is taken by another program, so a browser extension of omp 19.0 or older cannot connect here; a browser of omp 19.1 or later is linked through omp's own helper all the same.`,
+    );
   }
+  const native = startNativeLink({
+    upstreamUrl,
+    connect,
+    ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints }),
+    say: options.say,
+    unpaired,
+  });
   done.then(async (why) => {
-    listener.stop(true);
+    listener?.stop(true);
+    native.stop();
     if (why.startsWith("This computer's browser relay is no longer paired")) {
       const now = await readKeys(options.keysFile);
       delete now[options.server];
@@ -181,7 +206,7 @@ export async function startRelayCarrier(
     }
   });
   return {
-    port: listener.port as number,
+    port: (listener?.port as number | undefined) ?? null,
     done,
     stop: () => finish("stopped"),
   };

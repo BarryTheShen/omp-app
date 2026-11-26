@@ -58,11 +58,6 @@ export const BrowserStatus = z
         problem: z.string().nullable(),
         /** A carrier is connected from the browser's computer. */
         carried: z.boolean(),
-        /**
-         * The token omp's relay extension gives in its options when it runs on the app's own computer (no carrier
-         * there); null while the relay running is not the app's.
-         */
-        extensionToken: z.string().nullable(),
       })
       .strict(),
   })

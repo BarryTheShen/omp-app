@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { createAppServer } from "../server";
-import { EdgeRelay } from "./edge-relay";
+import { EdgeRelay, type RelayDiscovery } from "./edge-relay";
 
 /** A port nothing listens on now. */
 function freePort(): number {
@@ -51,9 +51,25 @@ afterEach(async () => {
   for (const each of cleanup.splice(0).reverse()) await each();
 });
 
-test("the app's relay takes the browser's extension only through a carrier the app's server let in, never straight from another program on its computer", async () => {
+/** omp's discovery as the chats read it, in memory: the published ports, the newest first. */
+function memoryDiscovery(): RelayDiscovery & { readonly published: number[] } {
+  const published: number[] = [];
+  return {
+    published,
+    publish: async (port) => {
+      published.unshift(port);
+      return async () => {
+        published.splice(published.indexOf(port), 1);
+      };
+    },
+    endpoints: () => published.map((port) => `http://127.0.0.1:${port}`),
+  };
+}
+
+test("the app's relay takes a browser from another computer only through a carrier the app's server let in, and lists itself for the chats only while one is joined", async () => {
   const port = freePort();
-  const relay = new EdgeRelay({ port });
+  const discovery = memoryDiscovery();
+  const relay = new EdgeRelay({ port, discovery });
   cleanup.push(() => relay.stop());
   const app = createAppServer({
     port: 0,
@@ -69,9 +85,9 @@ test("the app's relay takes the browser's extension only through a carrier the a
 
   await relay.ensure();
   expect(relay.state().running).toBe(true);
-  // Another program on this computer cannot attach as the browser: the relay wants a token it never sees.
-  expect(await outcome(`ws://127.0.0.1:${port}/ext`, null)).not.toBe("open");
-  // Nor can a carrier the app's server does not know.
+  // Running but holding no browser, it is not offered to the chats: a browser on this computer has its own relay.
+  expect(discovery.published).toEqual([]);
+  // A carrier the app's server does not know is turned away.
   expect(await outcome(`${app.url.replace("http:", "ws:")}/browser-relay?token=wrong`)).toBe(
     "closed 4401",
   );
@@ -92,9 +108,40 @@ test("the app's relay takes the browser's extension only through a carrier the a
   );
   await until("the browser connects", async () => (await relay.refresh()).connected);
   expect(relay.state()).toMatchObject({ running: true, connected: true, carried: true });
+  await until("the chats find it", () => discovery.published.includes(port));
 
-  // The carrier gone, the browser is gone too.
+  // The carrier gone, the browser is gone too, and the chats no longer find the relay.
   carrier.close();
   await until("the browser leaves", async () => !(await relay.refresh()).connected);
   expect(relay.state().carried).toBe(false);
+  await until("the chats lose it", () => !discovery.published.includes(port));
+});
+
+test("with no browser carried, the state is the relay a browser on this computer published, as the chats use it", async () => {
+  const own = freePort();
+  const discovery = memoryDiscovery();
+  // omp's native host for a browser on this computer: a relay on a port of its own, with that browser connected.
+  const local = freePort();
+  const native = Bun.serve({
+    port: local,
+    hostname: "127.0.0.1",
+    fetch: (request) => {
+      const path = new URL(request.url).pathname;
+      if (path === "/json/version") return Response.json({ Browser: "Chrome/151.0" });
+      if (path === "/json/list")
+        return Response.json([{ id: "t1", type: "page", url: "https://a.test/", title: "A" }]);
+      return new Response("Not found", { status: 404 });
+    },
+  });
+  cleanup.push(() => native.stop(true));
+  await discovery.publish(local);
+  const relay = new EdgeRelay({ port: own, discovery });
+  cleanup.push(() => relay.stop());
+  await relay.ensure();
+  expect(await relay.refresh()).toMatchObject({
+    connected: true,
+    browser: "Chrome/151.0",
+    tabs: [{ id: "t1", url: "https://a.test/" }],
+    carried: false,
+  });
 });

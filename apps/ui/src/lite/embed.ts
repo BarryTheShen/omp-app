@@ -374,8 +374,8 @@ export class EmbedEndpoint {
 
 /**
  * The host's tools as the chat takes them (`set_host_tools`). They are what the panel is for, so omp offers them by
- * name with its own tools (`essential`); left to omp's default, a host's tool is a device the model must look up first
- * (`xd://<name>`).
+ * name with its own tools (`essential`); left to omp's default, a host's tool is a `bash` command the model must look
+ * up first (`<name> --help`).
  */
 export function hostToolDefinitions(tools: readonly EmbedTool[]): HostToolDefinition[] {
   return tools.map((tool) => ({

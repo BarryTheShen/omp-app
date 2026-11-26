@@ -14,11 +14,11 @@ function reply(texts: readonly string[], agentInvoked = false): CommandParserCon
 }
 
 describe("/tools typed availability parser", () => {
-  test("maps omp's recorded prefixes and merges xd:// aliases by tool name", () => {
+  test("maps omp's recorded prefixes and merges tool-command lines by tool name", () => {
     expect(
       parseToolsReply(
         reply([
-          "* read\n* bash\n* edit\n- ast_edit\n* ask\n- debug\n* eval\n* glob\n* grep\n- lsp\n* task\n* wait\n* todo\n* web_search\n* write\n- goal\n- init_experiment\n- run_experiment\n- log_experiment\n- update_notes\n~ xd://ast_edit\n~ xd://debug\n~ xd://lsp",
+          "* read\n* bash\n* edit\n- ast_edit\n* ask\n- debug\n* eval\n* glob\n* grep\n- lsp\n* task\n* wait\n* todo\n* web_search\n* write\n- goal\n- init_experiment\n- run_experiment\n- log_experiment\n- update_notes\n~ ast_edit\n~ debug\n~ lsp",
         ]),
       ),
     ).toEqual({
@@ -56,8 +56,8 @@ describe("/tools typed availability parser", () => {
     expect(() => parseToolsReply(reply(["  \n"]))).toThrow(AppFailure);
   });
 
-  test("keeps an active tool available when it is also mounted on the xd:// device", () => {
-    expect(parseToolsReply(reply(["* read\n- ast_edit\n~ xd://read\n~ xd://ast_edit"]))).toEqual({
+  test("keeps an active tool available when it is also mounted as a bash command", () => {
+    expect(parseToolsReply(reply(["* read\n- ast_edit\n~ read\n~ ast_edit"]))).toEqual({
       tools: [
         { tool: "read", state: "available" },
         { tool: "ast_edit", state: "fallback" },

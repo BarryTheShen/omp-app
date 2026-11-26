@@ -102,7 +102,7 @@ export function createBrowserRuntime(context: BrowserPortContext): BrowserRuntim
         tabs: [...(browser?.tabs() ?? [])],
         front: browser?.front() ?? null,
       },
-      edge: { ...relay, tabs: [...relay.tabs], extensionToken: edge.extensionToken() },
+      edge: { ...relay, tabs: [...relay.tabs] },
     };
   };
   const needBrowser = (): ServerBrowser => {

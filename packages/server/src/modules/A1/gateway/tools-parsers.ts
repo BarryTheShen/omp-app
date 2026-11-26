@@ -6,8 +6,8 @@ import {
 import type { CommandParserContext, OmpCommandGatewayService } from "./gateway";
 
 /**
- * omp's `builtin-session.ts:520-539` format (v18.12.6): `*` and `-` name ordinary tools; `~ xd://name`
- * repeats the same tool when it is mounted on the xd:// device. The browser receives one typed row per tool.
+ * omp's `/tools` format (`slash-commands/builtin-session.ts:543-553` at 19.1.1): `*` and `-` name ordinary tools;
+ * `~ name` repeats a tool that runs as a `bash` command. The browser receives one typed row per tool.
  */
 const TOOL_LINE = /^([*~-])\s+(.+)$/u;
 
@@ -25,10 +25,7 @@ function parseToolLine(line: string): { readonly marker: string; readonly tool: 
   const marker = match[1];
   const rawTool = match[2]?.trim();
   if (marker === undefined || rawTool === undefined || rawTool.length === 0) throw unrecognized();
-  return {
-    marker,
-    tool: rawTool.startsWith("xd://") ? rawTool.slice("xd://".length) : rawTool,
-  };
+  return { marker, tool: rawTool };
 }
 
 function stateForMarker(marker: string): ToolAvailability["state"] {
@@ -52,7 +49,7 @@ export function parseToolsReply(context: CommandParserContext): ToolsAvailabilit
     .map((value) => value.trim())
     .filter(Boolean)) {
     const parsed = parseToolLine(line);
-    // omp prints the `~ xd://` lines last: a tool that is active and also mounted stays available.
+    // omp prints the `~` lines last: a tool that is active and also mounted stays available.
     if (rows.get(parsed.tool)?.state === "available") continue;
     rows.set(parsed.tool, { tool: parsed.tool, state: stateForMarker(parsed.marker) });
   }

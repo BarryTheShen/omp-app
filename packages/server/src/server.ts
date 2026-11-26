@@ -8,7 +8,7 @@ import {
   SOCKET_PROTOCOL,
   WelcomeFrame as WelcomeFrameSchema,
 } from "@omp-app/contracts";
-import type { CarriedLink, RelayHost } from "./browser/edge-relay";
+import type { CarriedLink, CarryLink, RelayHost } from "./browser/edge-relay";
 import {
   type DevicePairing,
   deviceCookie,
@@ -72,8 +72,9 @@ export interface AppServerOptions {
   /** Agent access to enrolled machines (#20): enrollment, and each machine's access link. Off without it. */
   readonly deviceAccess?: DeviceAccessServer;
   /**
-   * The relay for the user's own browser: a paired device's carrier (`omp-app relay`, the desktop app) brings the relay
-   * extension's connection to it at `/browser-relay`, so no tunnel to this computer is needed. Off without it.
+   * The relay for the user's own browser: a paired device's carrier (`omp-app relay`, the desktop app) brings its
+   * browser to it at `/browser-relay` (`CarryLink`: the extension's connection, or the control link and channels of the
+   * relay omp's native host serves there), so no tunnel to this computer is needed. Off without it.
    */
   readonly browserRelay?: Pick<RelayHost, "carry">;
 }
@@ -107,6 +108,18 @@ export interface UpgradePolicy {
   readonly remote?: RemoteOrigin;
   /** The paired device a key belongs to; absent when the server pairs no devices. */
   readonly deviceForKey?: (key: string) => string | undefined;
+}
+
+/** What a carrier's `/browser-relay` socket brings, by its query; the device it signed in as is added at its open. */
+type CarryLinkKind =
+  | { readonly kind: "extension" }
+  | { readonly kind: "relay" }
+  | { readonly kind: "channel"; readonly id: string };
+
+function carryLinkKind(url: URL): CarryLinkKind {
+  const channel = url.searchParams.get("channel");
+  if (channel !== null) return { kind: "channel", id: channel };
+  return url.searchParams.get("link") === "relay" ? { kind: "relay" } : { kind: "extension" };
 }
 
 function requestedPort(options: AppServerOptions): number {
@@ -378,8 +391,8 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
     /** A machine's access link (#20), not a page: it never reaches the dispatcher. */
     readonly accessLink?: true;
     access?: AccessLink;
-    /** A carrier of the relay extension's connection (`/browser-relay`), not a page: it never reaches the dispatcher. */
-    readonly relayCarrier?: true;
+    /** A carrier of the user's browser (`/browser-relay`), not a page: it never reaches the dispatcher. */
+    readonly relayCarrier?: CarryLinkKind;
     carried?: CarriedLink;
   }
 
@@ -456,7 +469,7 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           ...("closeCode" in authorization
             ? { authFailure: authorization, deviceId: null }
             : { deviceId: authorization.deviceId }),
-          ...(url.pathname === "/browser-relay" ? { relayCarrier: true as const } : {}),
+          ...(url.pathname === "/browser-relay" ? { relayCarrier: carryLinkKind(url) } : {}),
         };
         // The app's protocol is named back to a socket that offered it; one that offered none gets none (a browser fails
         // a socket whose server names a protocol it did not offer).
@@ -519,13 +532,19 @@ export function createAppServer(options: AppServerOptions = {}): AppServer {
           setTimeout(() => socket.close(closeCode, reason), 0);
           return;
         }
-        if (socket.data.relayCarrier && options.browserRelay !== undefined) {
-          const carried = options.browserRelay.carry({
-            send: (data) => {
-              socket.send(data);
+        if (socket.data.relayCarrier !== undefined && options.browserRelay !== undefined) {
+          const kind = socket.data.relayCarrier;
+          const link: CarryLink =
+            kind.kind === "extension" ? kind : { ...kind, device: socket.data.deviceId };
+          const carried = options.browserRelay.carry(
+            {
+              send: (data) => {
+                socket.send(data);
+              },
+              close: (code, reason) => socket.close(code, reason),
             },
-            close: (code, reason) => socket.close(code, reason),
-          });
+            link,
+          );
           if (typeof carried === "string") {
             setTimeout(() => socket.close(4409, carried.slice(0, 120)), 0);
             return;

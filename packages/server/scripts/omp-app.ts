@@ -328,7 +328,7 @@ if (args.command === "relay" && args.relay !== undefined) {
   });
   if (typeof carrier === "string") fail(carrier);
   console.log(
-    `Carrying your browser's relay extension to ${relay.server}: it connects to 127.0.0.1:${carrier.port} here. Keep this running while chats use your browser; Ctrl+C stops it.`,
+    `Carrying your browser to ${relay.server}: a browser of omp 19.1 or later through omp's own helper here${carrier.port === null ? "" : `, an extension of omp 19.0 or older through 127.0.0.1:${carrier.port}`}. Keep this running while chats use your browser; Ctrl+C stops it.`,
   );
   for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => carrier.stop());
   const why = await carrier.done;

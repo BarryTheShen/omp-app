@@ -591,7 +591,7 @@ describe("ChatStore", () => {
     const store = new ChatStore();
     const tools = Array.from({ length: 40 }, (_, index) => `mcp__notion_tool_${index}`).join(", ");
     store.apply(
-      event({ type: "notice", level: "info", message: `mounted ${tools}`, source: "xdev" }),
+      event({ type: "notice", level: "info", message: `mounted ${tools}`, source: "mcp" }),
     );
     store.apply(event({ type: "notice", level: "warning", message: "first line\nsecond line" }));
     store.toast(`New window: ${"refused ".repeat(30)}`, "error");
@@ -601,33 +601,11 @@ describe("ChatStore", () => {
       "warning",
       "error",
     ]);
-    expect(store.getSnapshot().notices[0]?.text).toBe(`xdev: mounted ${tools}`);
+    expect(store.getSnapshot().notices[0]?.text).toBe(`mcp: mounted ${tools}`);
 
     store.apply(event({ type: "ui_notify", message: "Reloaded" }));
     expect(store.getSnapshot().toast).toMatchObject({ text: "Reloaded", tone: "info" });
     expect(store.getSnapshot().notices).toHaveLength(3);
-  });
-
-  test("omp's re-announced mounted tools stay one line, the latest, and leave the chat's other notices alone", () => {
-    const store = new ChatStore();
-    const calendar = "mounted mcp__google_calendar_create_event, mcp__google_calendar_delete_event";
-    const siyuan = `mounted ${Array.from({ length: 30 }, (_, index) => `mcp__siyuan_tool_${index}`).join(", ")}`;
-    store.apply(event({ type: "command_output", text: "Active tools: bash, read" }));
-    for (let round = 0; round < 6; round += 1) {
-      store.apply(event({ type: "notice", level: "info", message: calendar, source: "xdev" }));
-      store.apply(event({ type: "notice", level: "info", message: siyuan, source: "xdev" }));
-    }
-    expect(store.getSnapshot().notices.map(({ text, level }) => `${level}: ${text}`)).toEqual([
-      "output: Active tools: bash, read",
-      `status: xdev: ${siyuan}`,
-    ]);
-    // A short announcement is a row too, so a long one before it never lingers.
-    store.apply(
-      event({ type: "notice", level: "info", message: "unmounted mcp__x", source: "xdev" }),
-    );
-    expect(store.getSnapshot().notices.at(-1)?.text).toBe("xdev: unmounted mcp__x");
-    expect(store.getSnapshot().notices).toHaveLength(2);
-    expect(store.getSnapshot().toast).toBeNull();
   });
 
   test("one toast at a time: a newer one takes its place, and only its own time ends it", () => {
@@ -831,7 +809,7 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().working).toBe(false);
   });
 
-  test("omp's answer to a write of xd://propose waits for review under the model's name; a failed write or another file does not", () => {
+  test("in a chat from before omp 19.1, omp's answer to a write of xd://propose waits for review under the model's name; a failed write or another file does not", () => {
     const store = new ChatStore();
     const write = (id: string, path: string, details: unknown, isError = false) => {
       store.apply(
@@ -880,6 +858,81 @@ describe("ChatStore", () => {
     expect(store.getSnapshot().goal?.status).toBe("paused");
     store.apply(event({ type: "goal_updated", goal: null }));
     expect(store.getSnapshot().goal).toBeNull();
+  });
+
+  test("omp 19.1's `propose`, run inside `bash` or as a tool, waits for review under its title; a `propose` that failed does not, whatever the shell said", () => {
+    const store = new ChatStore();
+    const plan = {
+      planFilePath: "local://fix-the-login-plan.md",
+      title: "fix-the-login",
+      planExists: true,
+    };
+    const run = (id: string, toolName: string, details: unknown, isError = false) => {
+      store.apply(event({ type: "tool_execution_start", toolCallId: id, toolName, args: {} }));
+      store.apply(
+        event({
+          type: "tool_execution_end",
+          toolCallId: id,
+          toolName,
+          isError,
+          result: { content: [], details },
+        }),
+      );
+    };
+    const record = (exitCode: number) => ({
+      tool: "propose",
+      mode: "execute",
+      exitCode,
+      inner: plan,
+    });
+    run("help", "bash", { toolCommands: [{ tool: "propose", mode: "help", exitCode: 0 }] });
+    run("failed", "bash", { toolCommands: [record(1)] });
+    run("refused", "propose", plan, true);
+    expect(store.getSnapshot().proposal).toBeNull();
+
+    // The shell's own status is not the proposal's: `propose x; false` submitted the plan.
+    run(
+      "in-bash",
+      "bash",
+      { toolCommands: [{ tool: "todo", mode: "execute", exitCode: 0 }, record(0)] },
+      true,
+    );
+    expect(store.getSnapshot().proposal).toEqual({
+      planFilePath: "local://fix-the-login-plan.md",
+      title: "fix-the-login",
+    });
+    store.clearProposal();
+    run("direct", "propose", { ...plan, title: "Fix the login" });
+    expect(store.getSnapshot().proposal?.title).toBe("Fix the login");
+
+    // Read from the chat's file, as a page opened after a restart does.
+    const read = new ChatStore();
+    read.setWindow(
+      [
+        fileEntry("a1", {
+          ...assistant([
+            {
+              type: "toolCall",
+              id: "c",
+              name: "bash",
+              arguments: { command: "propose fix-the-login" },
+            },
+          ]),
+          stopReason: "toolUse",
+        }),
+        fileEntry("r1", {
+          role: "toolResult",
+          toolCallId: "c",
+          toolName: "bash",
+          content: [{ type: "text", text: "Plan ready for review." }],
+          details: { toolCommands: [record(0)] },
+          isError: false,
+          timestamp: T + 1,
+        }),
+      ],
+      false,
+    );
+    expect(read.getSnapshot().proposal?.planFilePath).toBe("local://fix-the-login-plan.md");
   });
 
   test("a plan in the chat's file that the person has not answered waits for review when the file is read; one answered by a message, or set aside here, does not come back", () => {

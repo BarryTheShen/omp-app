@@ -93,8 +93,13 @@ describe("plan mode on the chat host", () => {
         // The model writes its plan and submits it; omp's review answers with the plan's file, and plan mode stays on.
         await promptToEnd(chat, "plan_propose");
         const proposal = toolResult(await messages(chat), "call_plan_propose");
+        // `propose` ran as a `bash` command (omp 19.1): its record on the result carries the approval payload.
         expect(proposal).toMatchObject({
-          details: { xdev: { tool: "propose", inner: { planFilePath: PLAN_FILE } } },
+          details: {
+            toolCommands: [
+              { tool: "propose", mode: "execute", inner: { planFilePath: PLAN_FILE } },
+            ],
+          },
         });
         expect(textOf(proposal?.content)).toContain("Plan ready for review.");
         expect(await chat.client.request("get_plan", { planFilePath: PLAN_FILE })).toEqual({

@@ -99,12 +99,6 @@ export interface ChatNotice {
   readonly share?: { readonly id: string; readonly url: string | null; readonly ended: boolean };
   /** The chat could not open: the row offers Try again (`reopen`) or New chat (`new-chat`). */
   readonly action?: "reopen" | "new-chat";
-  /**
-   * Notices of one group replace each other: the chat keeps only the latest. omp re-announces the tools it mounts under
-   * `xd://` (`source: "xdev"`, a list of every MCP tool) whenever its tools change, which filled a chat with dozens of
-   * identical rows.
-   */
-  readonly group?: "xdev";
 }
 
 /**
@@ -302,20 +296,55 @@ export interface PlanProposal {
   readonly title: string;
 }
 
-/** The plan in omp's answer to a `write` of `xd://propose`, if this is one; its name is what the model wrote. */
-function proposalOf(result: unknown, args: unknown): PlanProposal | null {
-  const xdev = (result as { readonly details?: { readonly xdev?: unknown } } | undefined)?.details
-    ?.xdev as
+/** omp's plan-approval payload (`planApprovalDetails`, `event-controller.ts` at 19.1.1), when `value` is one. */
+function approvalPayload(value: unknown): PlanProposal | null {
+  const payload = value as
+    | { readonly planFilePath?: unknown; readonly title?: unknown }
+    | null
+    | undefined;
+  if (typeof payload?.planFilePath !== "string") return null;
+  const title =
+    typeof payload.title === "string" && payload.title.trim() !== ""
+      ? payload.title.trim()
+      : payload.planFilePath.replace(/^local:\/\//, "").replace(/(-plan)?\.md$/, "");
+  return { planFilePath: payload.planFilePath, title };
+}
+
+/**
+ * The plan in omp's answer to a proposal, if `toolName`'s result is one (omp's `proposeDispatchDetails`): a direct
+ * `propose` call, or the last successful `propose` run inside a `bash` call (omp 19.1), judged by that run's own exit
+ * and not the shell's. Chats from before 19.1 hold a `write` to `xd://propose` instead, whose name is what the model
+ * wrote.
+ */
+function proposalOf(
+  toolName: string,
+  result: unknown,
+  isError: boolean,
+  args: unknown,
+): PlanProposal | null {
+  const details = (result as { readonly details?: Record<string, unknown> } | undefined)?.details;
+  if (toolName === "propose") return isError ? null : approvalPayload(details);
+  if (toolName === "bash") {
+    const runs = Array.isArray(details?.toolCommands) ? details.toolCommands : [];
+    for (const run of [...runs].reverse()) {
+      const record = run as {
+        readonly tool?: unknown;
+        readonly mode?: unknown;
+        readonly exitCode?: unknown;
+      };
+      if (record.tool === "propose" && record.mode === "execute" && record.exitCode === 0)
+        return approvalPayload((run as { readonly inner?: unknown }).inner);
+    }
+    return null;
+  }
+  if (toolName !== "write" || isError) return null;
+  const xdev = details?.xdev as
     | { readonly tool?: unknown; readonly inner?: { readonly planFilePath?: unknown } }
     | undefined;
   const planFilePath = xdev?.inner?.planFilePath;
   if (xdev?.tool !== "propose" || typeof planFilePath !== "string") return null;
   const written = (args as { readonly content?: unknown } | undefined)?.content;
-  const title =
-    typeof written === "string" && written.trim() !== ""
-      ? written.trim()
-      : planFilePath.replace(/^local:\/\//, "").replace(/(-plan)?\.md$/, "");
-  return { planFilePath, title };
+  return approvalPayload({ planFilePath, title: written });
 }
 
 /** The arguments of the call `id` in the assistant messages before `before`, as the file holds them. */
@@ -330,8 +359,8 @@ function callArguments(entries: readonly SessionEntry[], before: number, id: str
 }
 
 /**
- * The plan proposed last in the chat's file that still waits for review: omp's answer to a `write` of `xd://propose`
- * with no message of the person after it. A page opened after the server restarted has no event of it, only the file.
+ * The plan proposed last in the chat's file that still waits for review (`proposalOf`), with no message of the person
+ * after it. A page opened after the server restarted has no event of it, only the file.
  */
 function waitingProposal(
   entries: readonly SessionEntry[],
@@ -341,9 +370,11 @@ function waitingProposal(
     if (entry?.type !== "message") continue;
     const message = entry.message;
     if (message.role === "user") return null;
-    if (message.role !== "toolResult" || message.toolName !== "write" || message.isError) continue;
+    if (message.role !== "toolResult") continue;
     const proposal = proposalOf(
+      message.toolName,
       { details: message.details },
+      message.isError === true,
       callArguments(entries, at, message.toolCallId),
     );
     if (proposal !== null) return { proposal, call: message.toolCallId };
@@ -981,6 +1012,18 @@ export class ChatStore {
         const next = new Map(this.#activeTools);
         next.delete(event.toolCallId);
         this.#activeTools = next;
+        // In plan mode the model submits its plan with `propose` (a `bash` command, or a tool without `bash`); omp's
+        // answer names the file. Before the error check: a `bash` run is judged by the `propose` record's own exit.
+        const proposed = proposalOf(
+          event.toolName,
+          event.result,
+          event.isError === true,
+          started?.args,
+        );
+        if (proposed !== null) {
+          this.#proposal = proposed;
+          this.#proposalCall = event.toolCallId;
+        }
         if (event.isError === true) return false;
         // omp's todo tool answers every change with the whole list.
         if (event.toolName === "todo") {
@@ -988,14 +1031,6 @@ export class ChatStore {
             event.result as { readonly details?: { readonly phases?: unknown } } | undefined
           )?.details?.phases;
           if (Array.isArray(phases)) this.#todos = phases as ChatHostState["todoPhases"];
-        }
-        // In plan mode the model submits its plan by writing the plan's name to `xd://propose`; omp's answer names the file.
-        if (event.toolName === "write") {
-          const proposed = proposalOf(event.result, started?.args);
-          if (proposed !== null) {
-            this.#proposal = proposed;
-            this.#proposalCall = event.toolCallId;
-          }
         }
         return false;
       }
@@ -1070,11 +1105,9 @@ export class ChatStore {
         return false;
       case "notice": {
         // omp's out-of-band notices, as its TUI shows them: an error (the session or a side answer could not be saved)
-        // stays in the transcript until dismissed; the tools omp mounts under `xd://` are one dim line, replaced by its
-        // next announcement; anything else passes as a toast, unless it is too long for one.
+        // stays in the transcript until dismissed; anything else passes as a toast, unless it is too long for one.
         const text = event.source ? `${event.source}: ${event.message}` : event.message;
         if (event.level === "error") this.#notify(text, "error");
-        else if (event.source === "xdev") this.#notify(text, "status", "xdev");
         else this.#showToast(text, event.level);
         return false;
       }
@@ -1138,18 +1171,8 @@ export class ChatStore {
     }
   }
 
-  #notify(text: string, level: ChatNotice["level"], group?: ChatNotice["group"]): void {
-    const kept =
-      group === undefined
-        ? this.#notices
-        : this.#notices.filter((notice) => notice.group !== group);
-    const notice: ChatNotice = {
-      id: (this.#notices.at(-1)?.id ?? 0) + 1,
-      text,
-      level,
-      ...(group ? { group } : {}),
-    };
-    this.#notices = [...kept, notice];
+  #notify(text: string, level: ChatNotice["level"]): void {
+    this.#notices = [...this.#notices, { id: (this.#notices.at(-1)?.id ?? 0) + 1, text, level }];
   }
 
   /** Adds a finished message from the live stream, unless the transcript already holds it (read from the file). */

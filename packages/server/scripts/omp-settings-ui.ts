@@ -149,7 +149,6 @@ const TERMINAL_ONLY: ReadonlySet<string> = new Set([
   "treeFilterMode",
   "tui.autoGraph",
   "tui.codexResetFireworks",
-  "tui.completeScrollback",
   "tui.hyperlinks",
   "tui.imeSafeCursor",
   "tui.mouse",

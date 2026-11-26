@@ -1391,7 +1391,7 @@ export const GetPlanParams = z.object({ planFilePath: z.string().min(1).optional
 export type GetPlanParams = z.infer<typeof GetPlanParams>;
 
 export const ApprovePlanParams = z.object({
-  /** The plan to run: the `planFilePath` omp's `xd://propose` result reported. */
+  /** The plan to run: the `planFilePath` omp's `propose` result reported. */
   planFilePath: z.string().min(1),
   /** The plan's title from that result; it names an unnamed chat. */
   title: z.string().optional(),

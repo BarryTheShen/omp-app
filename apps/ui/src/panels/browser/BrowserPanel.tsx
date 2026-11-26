@@ -395,7 +395,7 @@ export function BrowserPanel({ client }: { readonly client: AppClient }): ReactN
   );
 }
 
-/** Whether this page is on the app's own computer, where omp's relay extension reaches the app's relay itself. */
+/** Whether this page is on the app's own computer, where the browser's own relay (omp's helper) serves the chats. */
 const onAppComputer = (): boolean =>
   ["127.0.0.1", "localhost", "[::1]"].includes(window.location.hostname);
 
@@ -496,39 +496,16 @@ function EdgeSection({
         </>
       ) : !edge.running ? (
         <div className="flex items-center gap-2">
-          <p className="min-w-0 flex-1 text-t2">
-            No relay is running: it starts when a chat uses the browser, or now.
-          </p>
+          <p className="min-w-0 flex-1 text-t2">No relay is running.</p>
           <Button size="sm" variant="secondary" onClick={onChoose}>
             Start the relay
           </Button>
         </div>
       ) : onAppComputer() ? (
-        <>
-          <p className="text-t2">
-            Waiting for your browser. On this computer, open omp's relay extension's options and set
-            its token to:
-          </p>
-          {edge.extensionToken === null ? (
-            <p className="text-xs text-t3">
-              (none: the relay running is one omp started, which takes the extension without one)
-            </p>
-          ) : (
-            <div className="flex items-center gap-1">
-              <code className="min-w-0 flex-1 rounded bg-l1 px-2 py-1 text-xs break-all">
-                {edge.extensionToken}
-              </code>
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label="Copy the token"
-                onClick={() => copy(edge.extensionToken ?? "")}
-              >
-                <Copy /> {copied === edge.extensionToken ? "Copied" : "Copy"}
-              </Button>
-            </div>
-          )}
-        </>
+        <p className="text-t2">
+          Waiting for your browser. On this computer, open Chrome or Edge with omp's extension: it
+          joins on its own (set it up once with <code>omp browser-relay install</code>).
+        </p>
       ) : bridge !== null ? (
         <>
           {carrying === "on" ? (
@@ -577,9 +554,9 @@ function EdgeSection({
       )}
       {!edge.connected && edge.running && (
         <p className="text-xs text-t3">
-          Your browser needs omp's relay extension (Chrome, Edge or another Chromium browser), on
-          its usual port. Chats drive its tabs: put the extension in a profile of its own, signed in
-          only to the sites chats should reach.
+          Your browser needs omp's extension (Chrome, Edge or another Chromium browser), set up on
+          its computer with <code>omp browser-relay install</code>. Chats drive its tabs: put the
+          extension in a profile of its own, signed in only to the sites chats should reach.
         </p>
       )}
       {chosen && (

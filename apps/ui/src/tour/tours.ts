@@ -3741,11 +3741,34 @@ const VOICE_DETECTOR_TOUR: Tour = {
   ],
 };
 
+/** The app runs omp 19.1.1 (2026-11-26). */
+const OMP_19_1_1_TOUR: Tour = {
+  id: "omp-19-1-1",
+  title: "omp 19.1.1",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: MESSAGE_BOX,
+      title: "omp 19.1.1",
+      text: "Your chats run on omp 19.1.1 now, up from 19.0.0: the app's automatic omp update tested it first, then moved your chats to it while they were paused. Rarely used tools now run as commands inside a bash call, and the bash card shows each one's own card underneath. In the Browser panel, a browser on the app's own computer joins through omp's extension by itself, with no token to paste, and a browser on another computer still comes through the desktop app or omp-app relay there, also once that computer has omp 19.1. omp's own notes on what changed are in its changelog.",
+      action: next,
+    },
+  ],
+};
+
 /**
  * Every update that brought tours, newest first: the What's new list, and the card offers what came since the reader
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-26-omp-19-1-1",
+    when: "2026-11-26T07:47:49Z",
+    summary:
+      "Your chats run on omp 19.1.1 now, up from 19.0.0: the app's automatic omp update tested it first, then moved your chats to it while they were paused. Rarely used tools now run as commands inside a bash call, and the bash card shows each one's own card underneath. In the Browser panel, a browser on the app's own computer joins through omp's extension by itself, with no token to paste, and a browser on another computer still comes through the desktop app or omp-app relay there, also once that computer has omp 19.1. omp's own notes on what changed are in its changelog.",
+    tours: [OMP_19_1_1_TOUR],
+  },
   {
     id: "2026-11-26-voice-detector",
     when: "2026-11-26T04:00:00Z",
