@@ -100,7 +100,7 @@ describe("carrying ask_async questions into Workbench", () => {
     });
     // An ask the thread cannot take as questions is kept as words.
     expect(b).toMatchObject({ title: "Questions from a chat", unanswered: 0 });
-    expect(b?.last?.text).toContain("Carried over as text:\n- Question dup? (dup)");
+    expect(b?.last?.text).toContain("Carried over as text: Question dup? (dup)");
 
     expect((await readdir(root)).filter((name) => name.startsWith("questions.json"))).toEqual([
       "questions.json.migrated",

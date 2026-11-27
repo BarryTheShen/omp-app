@@ -264,6 +264,31 @@ describe("Workbench threads", () => {
       { entries: 2, linesOnDisk: 2 },
     ]);
   });
+
+  test("show a row's latest words as plain text: Markdown's marks off, its lines joined", async () => {
+    const store = await open(await folder());
+    const thread = await store.open(
+      {
+        title: "Memory recall setting",
+        kind: "question",
+        text: "**Problem:** Hindsight's `recall` took 9–18 s.\n\n- **Open / Closed tabs**, see [the plan](PLAN.md)\n> keep *300*",
+        owner: CHAT,
+      },
+      AGENT,
+    );
+    expect(store.read(thread.id)?.summary.last?.text).toBe(
+      "Problem: Hindsight's recall took 9–18 s. Open / Closed tabs, see the plan keep 300",
+    );
+    const posted = await store.post(
+      thread.id,
+      {
+        type: "update",
+        text: "## Done\n1. `thread_open` and snake_case names stay\n```ts\nx * y * z\n```",
+      },
+      AGENT,
+    );
+    expect(posted.summary.last?.text).toBe("Done thread_open and snake_case names stay x * y * z");
+  });
 });
 
 /** An answer to a sent question is refused after a restart too: what was sent stays sent. */

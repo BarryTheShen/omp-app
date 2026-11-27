@@ -3019,6 +3019,22 @@ const WORKBENCH_PER_CHAT_TOUR: Tour = {
   ],
 };
 
+/** A thread's row shows its latest words as plain text. */
+const WORKBENCH_PLAIN_ROWS_TOUR: Tour = {
+  id: "workbench-plain-rows-2026-11-27",
+  title: "Plain previews in Workbench",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Readable previews",
+      text: "In <b>Workbench</b>, the line under a thread's title shows the start of its latest entry as plain text, without Markdown's marks.",
+      action: next,
+    },
+  ],
+};
+
 /** Workbench as a repository's issues: Open and Closed, with labels; the briefing on the dashboard. */
 const WORKBENCH_OPEN_CLOSED_TOUR: Tour = {
   id: "workbench-open-closed-2026-11-27",
@@ -3955,6 +3971,13 @@ const OMP_19_1_1_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-27-workbench-plain-rows",
+    when: "2026-11-27T16:15:00Z",
+    summary:
+      "Workbench's list shows a thread's latest words as plain text: Markdown's marks such as ** no longer show in the line under its title.",
+    tours: [WORKBENCH_PLAIN_ROWS_TOUR],
+  },
   {
     id: "2026-11-27-workbench-open-closed",
     when: "2026-11-27T15:45:00Z",

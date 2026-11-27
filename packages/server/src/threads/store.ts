@@ -58,8 +58,29 @@ interface Kept {
 const defaultId = (): string =>
   `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8).padEnd(6, "0")}`;
 
-const cut = (text: string): string =>
-  text.length <= LAST_TEXT_MAX ? text : `${text.slice(0, LAST_TEXT_MAX - 1).trimEnd()}…`;
+/**
+ * An entry's Markdown as one line of plain text, for the list's row and the briefing (which shows it inside its own
+ * list): headings, quotes, list and task marks, code fences, emphasis, inline code and links come off; lines join.
+ * Single underscores stay (they are in names: `thread_open`).
+ */
+export function plainLine(markdown: string): string {
+  return markdown
+    .replace(/^\s*(```|~~~).*$/gm, "")
+    .replace(/^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+(\[[ xX]\]\s+)?|\d+[.)]\s+)/gm, "")
+    .replace(/!?\[([^\]\n]*)\]\([^)\n]*\)/g, "$1")
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    .replace(/~~(.+?)~~/g, "$1")
+    .replace(/(^|[^\w*])\*(?=\S)([^*\n]+?)\*(?!\w)/g, "$1$2")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const cut = (markdown: string): string => {
+  const text = plainLine(markdown);
+  return text.length <= LAST_TEXT_MAX ? text : `${text.slice(0, LAST_TEXT_MAX - 1).trimEnd()}…`;
+};
 
 /** The words an entry adds to the list's row, if it has any. */
 function wordsOf(entry: WorkThreadEntry): string | null {
