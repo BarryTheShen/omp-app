@@ -86,10 +86,9 @@ export const PANELS: readonly Panel[] = [
     id: "workbench",
     title: "Workbench",
     icon: Hammer,
-    render: ({ client, folder, chat, openChat }) => (
+    render: ({ client, chat, openChat }) => (
       <WorkbenchPanel
         client={client}
-        folder={folder}
         chat={chat}
         {...(openChat === undefined ? {} : { openChat })}
       />

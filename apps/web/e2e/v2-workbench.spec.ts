@@ -109,7 +109,7 @@ realTest.describe("Workbench", () => {
   );
 
   realTest(
-    "a thread you open goes to this chat as a notice, what you write in it too, and another page follows it live",
+    "a thread you open is this chat's: the chat gets it as a notice, another page in the chat follows it live, and another chat's Workbench has its own list",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
@@ -125,7 +125,7 @@ realTest.describe("Workbench", () => {
       await form.getByRole("textbox", { name: "Title" }).fill("Relay test");
       await form.getByRole("radio", { name: "Feature" }).click();
       await form.getByRole("textbox", { name: "What you want" }).fill("Drive the laptop's browser");
-      await expect(form.getByRole("radio", { name: "This chat" })).toBeChecked();
+      await expect(form.getByRole("radiogroup", { name: "It goes to" })).toHaveCount(0);
       await form.getByRole("button", { name: "Open the thread" }).click();
       const thread = panel.getByRole("region", { name: "Thread: Relay test" });
       await expect(thread).toBeVisible();
@@ -134,7 +134,14 @@ realTest.describe("Workbench", () => {
         '"Relay test" (feature), opened by the person for this chat:',
       );
 
+      // Another page, in the same chat: its Workbench shows the thread.
       const other = await realApp.open({ path: "/" });
+      await other
+        .getByRole("navigation", { name: "Chats" })
+        .getByRole("button", { name: /^hello/ })
+        .click();
+      // The chat answered twice by now (hello, then the thread's notice): its transcript has a pong.
+      await expect(transcript(other).getByText("pong").first()).toBeVisible({ timeout: 60_000 });
       await rail(other).getByRole("button", { name: "Workbench", exact: true }).click();
       const otherPanel = workbench(other);
       await otherPanel.getByRole("tab", { name: "All" }).click();
@@ -156,6 +163,20 @@ realTest.describe("Workbench", () => {
       await expect(thread.getByRole("combobox", { name: "State" })).toHaveValue("done", {
         timeout: 10_000,
       });
+
+      // Another chat has a Workbench of its own: this chat's thread is not in it.
+      await startNewChat(page);
+      // New chat puts the caret in the new chat's message box (the first chat's may sit beside it).
+      const secondBox = page.getByRole("textbox", { name: "Message" }).and(page.locator(":focus"));
+      await expect(secondBox).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await secondBox.fill("second chat");
+      await secondBox.press("Enter");
+      // The panel is still open and follows the chat you are in: once the new chat has its id, its own list shows.
+      const secondPanel = workbench(page);
+      await expect(secondPanel.getByRole("tab", { name: "All" })).toBeVisible({ timeout: 90_000 });
+      await secondPanel.getByRole("tab", { name: "All" }).click();
+      await expect(secondPanel).toContainText("No threads here.");
+      await expect(secondPanel.getByRole("button", { name: /^Relay test/ })).toHaveCount(0);
 
       expect(realApp.problems).toEqual([]);
     },

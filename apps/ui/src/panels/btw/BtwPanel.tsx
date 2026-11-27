@@ -14,12 +14,10 @@ import { type BtwRecord, type BtwTurn, copyText, latestTurn, turnsOf } from "../
 import type { ChatController } from "../../chat/controller";
 import { writeClipboard } from "../../clipboard";
 import { isImeEnter } from "../../keys/ime";
-import { useWaiting } from "../../questions/waiting";
 import {
   Markdown,
   StreamingMarkdown,
 } from "../../vendor/collab-web/components/transcript/Markdown";
-import { QuestionsTab } from "./QuestionCard";
 
 const failureText = (failure: unknown): string =>
   failure instanceof Error ? failure.message : String(failure);
@@ -163,73 +161,33 @@ function Turn({ turn, index }: { readonly turn: BtwTurn; readonly index: number 
 }
 
 /**
- * The Questions panel, beside the chat it belongs to (the focused pane's), in two tabs: what stops the chat until you
- * answer (Questions for you: a plan to approve, omp's questions), and the side questions asked with omp's `/btw` (its
- * BTW history). It opens on the questions when one waits; `/btw` brings the side questions forward.
+ * The Questions panel, beside the chat it belongs to (the focused pane's): the side questions asked with omp's `/btw`
+ * (its BTW history). What stops the chat until you answer, and questions asked in threads, are in its Workbench.
  */
 export function BtwPanel({ chat }: { readonly chat: ChatController | null }): ReactNode {
   if (chat === null)
     return <p className="px-4 py-3 text-[0.8125rem] text-t3">Open a chat to see its questions.</p>;
-  return <BtwTabs controller={chat} />;
+  return <SideQuestions controller={chat} />;
 }
 
-type BtwTab = "questions" | "side";
-
-function BtwTabs({ controller }: { readonly controller: ChatController }): ReactNode {
-  // The plan to review and omp's questions: the tab's count, and the tab the panel opens on.
-  const open = useWaiting(controller);
-  // Read as a yes or no, so the pieces of a side answer do not redraw the tabs.
+function SideQuestions({ controller }: { readonly controller: ChatController }): ReactNode {
+  // Read as a yes or no, so the pieces of a side answer do not redraw the panel.
   const sideWanted = useSyncExternalStore(
     controller.btw.subscribe,
     () => controller.btw.getSnapshot().wanted,
   );
-  const [picked, setPicked] = useState<BtwTab | null>(null);
-  // Another chat focused: its own tab is decided again (React's way of resetting state for a new prop).
-  const [owner, setOwner] = useState(controller);
-  if (owner !== controller) {
-    setOwner(controller);
-    setPicked(null);
-  }
-  // `/btw` (a side question asked, or the history opened) brings the side questions forward, also while questions wait.
+  // `/btw` (a side question asked, or the history opened) asked for the panel: it shows, so the ask is met.
   useEffect(() => {
-    if (!sideWanted) return;
-    setPicked("side");
-    controller.btw.revealed();
+    if (sideWanted) controller.btw.revealed();
   }, [sideWanted, controller]);
-  const tab: BtwTab = picked ?? (open > 0 ? "questions" : "side");
-
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div
-        role="tablist"
-        aria-label="Questions"
-        className="flex shrink-0 gap-1 border-b border-l2 p-1.5"
-      >
-        <TabButton selected={tab === "questions"} onClick={() => setPicked("questions")}>
-          Questions for you
-          {open > 0 && (
-            <>
-              {" "}
-              <span className="ml-1 rounded-full bg-primary px-1.5 text-[11px] font-medium text-primary-foreground">
-                {open}
-              </span>
-            </>
-          )}
-        </TabButton>
-        <TabButton selected={tab === "side"} onClick={() => setPicked("side")}>
-          Side questions
-        </TabButton>
-      </div>
-      {tab === "questions" ? (
-        <QuestionsTab controller={controller} />
-      ) : (
-        <BtwHistory controller={controller} />
-      )}
+      <BtwHistory controller={controller} />
     </div>
   );
 }
 
-/** One of the panel's two tabs; on a phone 44 px tall, a finger's target, as the app's other tabs. */
+/** A tab of a panel's tab row (Workbench's filters); on a phone 44 px tall, a finger's target, as the app's other tabs. */
 export function TabButton({
   selected,
   onClick,

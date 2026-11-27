@@ -1,3 +1,4 @@
+import type { WorkThreadSummary } from "@omp-app/contracts";
 import { Gauge } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { KEYS, keycap } from "../keys/table";
 import { useWaiting } from "../questions/waiting";
 import { hidePanel, showPanel, usePanelState } from "./panel-state";
 import { PANELS } from "./registry";
+import { waitsOnYou } from "./workbench/threads";
 
 /**
  * The side panel's opener, along the window's right edge where the panel opens: one button per panel. A click shows the
@@ -18,18 +20,25 @@ export function PanelRail({
   chat,
   onDashboard,
   dashboardWaiting,
-  workbenchWaiting,
+  workThreads,
 }: {
-  /** The focused pane's chat: the Questions button counts its questions that wait for an answer. */
+  /** The focused pane's chat: the Questions and Workbench buttons count what of it waits for you. */
   readonly chat: ChatController | null;
   readonly onDashboard: () => void;
   /** Every chat's open questions and the to-dos due, for the dashboard button's count. */
   readonly dashboardWaiting: number;
-  /** Workbench's threads that wait on you, for its button's count. */
-  readonly workbenchWaiting: number;
+  /** Every chat's Workbench threads (null until read): the focused chat's that wait on you are counted. */
+  readonly workThreads: readonly WorkThreadSummary[] | null;
 }): ReactNode {
   const { open, panel } = usePanelState();
-  const waiting = useWaiting(chat);
+  // What stops the chat (omp's questions, a plan) and its threads that wait on you: counted on Workbench's button.
+  const stops = useWaiting(chat);
+  const here = chat?.threadId ?? null;
+  const workbenchWaiting =
+    here === null
+      ? 0
+      : stops +
+        (workThreads ?? []).filter((thread) => thread.owner === here && waitsOnYou(thread)).length;
   return (
     <nav
       aria-label="Side panel"
@@ -40,7 +49,7 @@ export function PanelRail({
     >
       {PANELS.map((item) => {
         const shown = open && item.id === panel;
-        const count = item.id === "btw" ? waiting : item.id === "workbench" ? workbenchWaiting : 0;
+        const count = item.id === "workbench" ? workbenchWaiting : 0;
         const label = count > 0 ? `${item.title}, ${count} waiting for you` : item.title;
         return (
           <Tooltip key={item.id}>

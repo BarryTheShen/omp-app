@@ -1,8 +1,5 @@
 import type { AppClient } from "@omp-app/client";
 import {
-  ChatSessionPort,
-  type FolderPath,
-  type OpenQuestionsChat,
   type ThreadId,
   type WorkThreadAnswer,
   type WorkThreadEntry,
@@ -14,7 +11,7 @@ import {
   type WorkThreadSummary,
   WorkThreadsPort,
 } from "@omp-app/contracts";
-import { isOmpQuestion, type QuestionRecord } from "@omp-app/contracts/chat-host";
+import type { QuestionRecord } from "@omp-app/contracts/chat-host";
 import { ArrowLeft, Plus } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -24,6 +21,8 @@ import { Textarea } from "@/components/ui/textarea";
 import type { ChatController, ChatTarget } from "../../chat/controller";
 import { OmpQuestionCard } from "../../chat/HostRequests";
 import { isImeEnter } from "../../keys/ime";
+import { PlanCard } from "../../plan/PlanCard";
+import { useOmpQuestions, usePlan } from "../../questions/waiting";
 import { Markdown } from "../../vendor/collab-web/components/transcript/Markdown";
 import { TabButton } from "../btw/BtwPanel";
 import { type Draft, decided, draftOf, QuestionFields } from "../btw/QuestionCard";
@@ -31,7 +30,6 @@ import {
   FILTERS,
   type Filter,
   filtered,
-  useStoppedChats,
   useWorkThread,
   useWorkThreadList,
   waitsOnYou,
@@ -80,28 +78,43 @@ type View =
   | { readonly kind: "new" };
 
 /**
- * Workbench (threads, one per piece of work): the threads, filtered (Needs you, In progress, Done, All), newest activity
- * first, each with its kind, state, bar and what waits on you; a thread's timeline, with its questions to answer and a
- * box to write in; and New thread, which hands a thread to this chat, the main chat or a new chat.
+ * A chat's Workbench (threads, one per piece of work, like a repository's issues): the threads of the chat you are in,
+ * filtered (Needs you, In progress, Done, All), newest activity first, each with its kind, state, bar and what waits on
+ * you; a thread's timeline, with its questions to answer and a box to write in; and New thread, which opens one for this
+ * chat. Another chat focused shows its own list.
  */
 export function WorkbenchPanel({
   client,
-  folder,
   chat,
   openChat,
 }: {
   readonly client: AppClient;
-  readonly folder: FolderPath;
   readonly chat: ChatController | null;
   readonly openChat?: (target: ChatTarget) => void;
 }): ReactNode {
   const { list, missing } = useWorkThreadList(client);
   const [view, setView] = useState<View>({ kind: "list" });
   const [filter, setFilter] = useState<Filter>("Needs you");
-  // Chats omp stopped to ask you: under Needs you, and in the threads they own.
-  const stopped = useStoppedChats(client);
+  // What stops this chat until you answer (omp's questions, a plan to approve): at the top of its Workbench.
+  const plan = usePlan(chat);
+  const omp = useOmpQuestions(chat);
+  const stops = omp.length + (plan === null ? 0 : 1);
+  /** The chat you are in, once omp gave it its id: the Workbench is its. */
+  const here = chat?.threadId ?? null;
+  // Another chat focused: its own Workbench, from its list (React's way of resetting state for a new prop).
+  const [shownFor, setShownFor] = useState(here);
+  if (shownFor !== here) {
+    setShownFor(here);
+    setView({ kind: "list" });
+  }
   if (missing)
     return <p className="px-3 py-2 text-sm text-t3">This server has no Workbench yet.</p>;
+  if (here === null)
+    return (
+      <p className="px-3 py-2 text-sm text-t3">
+        Open a chat to see its Workbench: its threads, one per plan, feature or bug.
+      </p>
+    );
   if (list === null) return <p className="px-3 py-2 text-sm text-t3">Reading the threads…</p>;
   if (view.kind === "thread")
     return (
@@ -109,7 +122,6 @@ export function WorkbenchPanel({
         client={client}
         id={view.id}
         chat={chat}
-        stopped={stopped}
         openChat={openChat}
         onBack={() => setView({ kind: "list" })}
       />
@@ -118,16 +130,15 @@ export function WorkbenchPanel({
     return (
       <NewThread
         client={client}
-        folder={folder}
-        chat={chat}
-        mainChat={list.mainChat}
+        here={here}
         onOpened={(id) => setView({ kind: "thread", id })}
         onCancel={() => setView({ kind: "list" })}
       />
     );
-  const shown = filtered(list.threads, filter);
-  const stoppedShown = filter === "Needs you" || filter === "All" ? stopped : [];
-  const waiting = list.threads.filter(waitsOnYou).length + stopped.length;
+  const threads = list.threads.filter((thread) => thread.owner === here);
+  const shown = filtered(threads, filter);
+  const stopsShown = (filter === "Needs you" || filter === "All") && chat !== null;
+  const waiting = threads.filter(waitsOnYou).length + stops;
   return (
     <div data-tour="workbench-panel" className="flex h-full min-h-0 flex-col">
       <div
@@ -146,12 +157,9 @@ export function WorkbenchPanel({
           <Plus />
           New thread
         </Button>
-        <MainChat client={client} chat={chat} mainChat={list.mainChat} />
       </div>
-      {stoppedShown.map((stoppedChat) => (
-        <StoppedChat key={stoppedChat.threadId} client={client} chat={stoppedChat} />
-      ))}
-      {shown.length === 0 && stoppedShown.length === 0 ? (
+      {stopsShown && <ChatStops controller={chat} />}
+      {shown.length === 0 && (!stopsShown || stops === 0) ? (
         <p className="px-3 py-2 text-sm text-t3">
           {filter === "Needs you" ? "Nothing waits on you." : "No threads here."}
         </p>
@@ -174,67 +182,29 @@ export function WorkbenchPanel({
   );
 }
 
-/** A chat omp stopped to ask you something: its questions, answered here as above the chat's message box. */
-function StoppedChat({
-  client,
-  chat,
-}: {
-  readonly client: AppClient;
-  readonly chat: OpenQuestionsChat;
-}): ReactNode {
-  const name = chat.title ?? "A new chat";
+/**
+ * What stops the chat until you answer, as above its message box and answered in either place: the plan omp proposed in
+ * plan mode, and omp's own questions. Nothing when nothing stops it.
+ */
+function ChatStops({ controller }: { readonly controller: ChatController }): ReactNode {
+  const plan = usePlan(controller);
+  const omp = useOmpQuestions(controller);
+  if (plan === null && omp.length === 0) return null;
   return (
-    <section aria-label={`${name} waits for you`} className="flex flex-col gap-1.5 px-2 pb-2">
-      <h3 className="px-1 text-xs font-medium text-warn-ink">{name} waits for you</h3>
-      {chat.requests.filter(isOmpQuestion).map((request) => (
+    <section
+      aria-label="The chat waits for you"
+      className="flex shrink-0 flex-col gap-1.5 px-2 pb-2"
+    >
+      <h3 className="px-1 text-xs font-medium text-warn-ink">The chat waits for you</h3>
+      {plan !== null && <PlanCard controller={controller} proposal={plan} inPanel />}
+      {omp.map((request) => (
         <OmpQuestionCard
           key={request.id}
           request={request}
-          answerWith={(answer) =>
-            client.port(ChatSessionPort).answer({ threadId: chat.threadId, id: request.id, answer })
-          }
+          answerWith={(answer) => controller.answer(request.id, answer)}
         />
       ))}
     </section>
-  );
-}
-
-/** The chat that takes threads no chat owns: this chat, or a button to make it so. */
-function MainChat({
-  client,
-  chat,
-  mainChat,
-}: {
-  readonly client: AppClient;
-  readonly chat: ChatController | null;
-  readonly mainChat: ThreadId | null;
-}): ReactNode {
-  const [problem, setProblem] = useState<string | null>(null);
-  // A chat omp has not given its id yet cannot be the main chat.
-  const here = chat?.threadId ?? null;
-  if (here === null) return null;
-  if (mainChat === here) return <span className="text-xs text-t3">This chat is the main chat</span>;
-  return (
-    <>
-      <Button
-        size="sm"
-        variant="ghost"
-        onClick={() => {
-          setProblem(null);
-          client
-            .port(WorkThreadsPort)
-            .setMainChat({ threadId: here })
-            .catch((failure: unknown) => setProblem(failureText(failure)));
-        }}
-      >
-        Make this chat the main chat
-      </Button>
-      {problem !== null && (
-        <span role="alert" className="text-xs text-bad-ink">
-          {problem}
-        </span>
-      )}
-    </>
   );
 }
 
@@ -259,7 +229,7 @@ function ProgressBar({ thread }: { readonly thread: WorkThreadSummary }): ReactN
   );
 }
 
-function ThreadRow({
+export function ThreadRow({
   thread,
   onOpen,
 }: {
@@ -377,25 +347,21 @@ export function asksIn(
   return asks;
 }
 
-function ThreadView({
+export function ThreadView({
   client,
   id,
   chat,
-  stopped,
   openChat,
   onBack,
 }: {
   readonly client: AppClient;
   readonly id: WorkThreadId;
+  /** The chat you are in: what stops it shows atop its threads too. */
   readonly chat: ChatController | null;
-  /** Chats omp stopped to ask you: the one that owns this thread shows its questions here. */
-  readonly stopped: readonly OpenQuestionsChat[];
   readonly openChat?: (target: ChatTarget) => void;
   readonly onBack: () => void;
 }): ReactNode {
   const read = useWorkThread(client, id);
-  /** The chat you are in, once omp gave it its id. */
-  const here = chat?.threadId ?? null;
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -477,16 +443,6 @@ function ThreadView({
               Open its chat
             </button>
           )}
-          {here !== null && summary.owner !== here && (
-            <button
-              type="button"
-              className="text-accent-ink underline"
-              disabled={busy}
-              onClick={() => run(() => client.port(WorkThreadsPort).setOwner({ id, owner: here }))}
-            >
-              Hand it to this chat
-            </button>
-          )}
         </div>
         {summary.progress !== null && (
           <div className="flex flex-col gap-1 px-1">
@@ -518,14 +474,11 @@ function ThreadView({
           </ul>
         )}
       </header>
-      {(() => {
-        const owner = stopped.find((one) => one.threadId === summary.owner);
-        return owner === undefined ? null : (
-          <div className="shrink-0 border-b border-l2 pt-2">
-            <StoppedChat client={client} chat={owner} />
-          </div>
-        );
-      })()}
+      {chat !== null && summary.owner === chat.threadId && (
+        <div className="shrink-0 pt-2">
+          <ChatStops controller={chat} />
+        </div>
+      )}
       <ol
         aria-label="Timeline"
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-2"
@@ -750,32 +703,22 @@ export function AskCard({
   );
 }
 
-/** New thread: its title, kind and what you want, and the chat it goes to. */
+/** New thread in this chat's Workbench: its title, kind and what you want; the chat takes it up and answers in it. */
 function NewThread({
   client,
-  folder,
-  chat,
-  mainChat,
+  here,
   onOpened,
   onCancel,
 }: {
   readonly client: AppClient;
-  readonly folder: FolderPath;
-  readonly chat: ChatController | null;
-  readonly mainChat: ThreadId | null;
+  /** The chat whose Workbench it is. */
+  readonly here: ThreadId;
   readonly onOpened: (id: WorkThreadId) => void;
   readonly onCancel: () => void;
 }): ReactNode {
   const [title, setTitle] = useState("");
   const [kind, setKind] = useState<WorkThreadKind>("task");
   const [text, setText] = useState("");
-  const here = chat?.threadId ?? null;
-  const targets = [
-    ...(here === null ? [] : [{ value: "this", label: "This chat" }]),
-    ...(mainChat === null || mainChat === here ? [] : [{ value: "main", label: "The main chat" }]),
-    { value: "new", label: "A new chat in this folder" },
-  ];
-  const [to, setTo] = useState(targets[0]?.value ?? "new");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const ok = title.trim() !== "" && text.trim() !== "";
@@ -789,12 +732,7 @@ function NewThread({
         title: title.trim(),
         kind,
         text: text.trim(),
-        to:
-          to === "this" && here !== null
-            ? { kind: "chat", threadId: here }
-            : to === "main"
-              ? { kind: "main" }
-              : { kind: "new", folder },
+        to: { kind: "chat", threadId: here },
       })
       .then((thread) => onOpened(thread.id))
       .catch((failure: unknown) => setProblem(failureText(failure)))
@@ -835,22 +773,6 @@ function NewThread({
         value={text}
         onChange={(event) => setText(event.target.value)}
       />
-      <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 text-xs font-medium text-t2">It goes to</legend>
-        <RadioGroup
-          aria-label="It goes to"
-          value={to}
-          onValueChange={(value) => setTo(String(value))}
-        >
-          {targets.map((target) => (
-            // biome-ignore lint/a11y/noLabelWithoutControl: the round mark inside is the control
-            <label key={target.value} className="flex items-center gap-1.5 text-sm text-t1">
-              <RadioGroupItem value={target.value} aria-label={target.label} />
-              {target.label}
-            </label>
-          ))}
-        </RadioGroup>
-      </fieldset>
       <div className="flex items-center gap-2">
         <Button size="sm" disabled={busy || !ok} onClick={open}>
           Open the thread

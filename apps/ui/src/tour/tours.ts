@@ -2976,7 +2976,7 @@ const WORKBENCH_TOUR: Tour = {
     {
       target: WORKBENCH_PANEL,
       title: "Open one yourself",
-      text: "<b>New thread</b> hands a thread to this chat, the main chat or a new chat, which takes it up and answers in it.",
+      text: "<b>New thread</b> opens one in this chat's Workbench: a plan, a bug, or a question for the chat, which answers in the thread.",
       action: next,
     },
   ],
@@ -2997,6 +2997,28 @@ const KEPT_CHATS_TOUR: Tour = {
   ],
 };
 
+/** Each chat's own Workbench: its threads, like a repository's issues; asking in a thread; Questions keeps /btw. */
+const WORKBENCH_PER_CHAT_TOUR: Tour = {
+  id: "workbench-per-chat-2026-11-27",
+  title: "A Workbench for each chat",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Each chat has its own",
+      text: "<b>Workbench</b> shows the threads of the chat you are in: one per plan, feature or bug, like a repository's issues. Another chat shows its own.",
+      action: next,
+    },
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Ask in a thread",
+      text: "Open a thread to ask the chat something: it answers in the thread, not in the chat. What stops the chat (a plan, omp's question) waits at the top of its Workbench; <b>Questions</b> keeps your /btw side questions.",
+      action: next,
+    },
+  ],
+};
+
 /** Workbench's second step: questions asked while a chat works are asked in threads; the daily briefing. */
 const WORKBENCH_CUTOVER_TOUR: Tour = {
   id: "workbench-cutover-2026-11-27",
@@ -3007,7 +3029,7 @@ const WORKBENCH_CUTOVER_TOUR: Tour = {
     {
       target: SIDE_PANEL_RAIL,
       title: "Questions live in threads now",
-      text: 'A chat that asks you something while it keeps working asks in its <b>Workbench</b> thread, and your answers reach it from there. Questions waiting from before were moved into a thread per chat, "Questions from …". The <b>Questions</b> panel keeps what stops a chat (omp\'s own questions, a plan to approve) and your side questions.',
+      text: 'A chat that asks you something while it keeps working asks in its <b>Workbench</b> thread, and your answers reach it from there. Questions waiting from before were moved into a thread per chat, "Questions from …". What stops a chat (omp\'s own questions, a plan to approve) waits at the top of its Workbench; the <b>Questions</b> panel keeps your side questions.',
       action: next,
     },
     {
@@ -3911,6 +3933,13 @@ const OMP_19_1_1_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-27-workbench-per-chat",
+    when: "2026-11-27T03:25:00Z",
+    summary:
+      "Each chat has its own Workbench, its threads like a repository's issues, and the dashboard shows every chat's in one large Workbench; a thread you open is answered in the thread; what stops a chat is at the top of its Workbench, and Questions keeps the /btw side questions.",
+    tours: [WORKBENCH_PER_CHAT_TOUR],
+  },
   {
     id: "2026-11-27-kept-chats",
     when: "2026-11-27T01:25:00Z",

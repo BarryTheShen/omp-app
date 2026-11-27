@@ -2,8 +2,8 @@ import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
- * omp's `/btw` in the new UI (`apps/ui`) on real omp: a side question opens the side panel's Questions panel on its Side
- * questions tab (omp's BTW history) beside the chat, which stays usable, and is answered there, out of the chat; a
+ * omp's `/btw` in the new UI (`apps/ui`) on real omp: a side question opens the side panel's Questions panel (the side
+ * questions, omp's BTW history) beside the chat, which stays usable, and is answered there, out of the chat; a
  * follow-up joins its topic; putting the history away while an answer still comes says so, and the chat says when it is
  * ready; Stop answer cancels one and keeps what came; the history is there again after a reload. In Chromium and in
  * WebKit, the desktop window's engine.

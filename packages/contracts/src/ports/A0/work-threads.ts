@@ -218,10 +218,19 @@ export type WorkThreadTarget = z.infer<typeof WorkThreadTarget>;
 
 const ById = { id: WorkThreadId };
 
-/** The list, and the chat that takes a thread no chat owns (null: none set). */
+/** The list, the chat that takes a thread no chat owns (null: none set), and the names of the chats that own threads. */
 export const WorkThreadList = z.strictObject({
   threads: z.array(WorkThreadSummary),
   mainChat: ThreadId.nullable(),
+  /** Each owning chat's name as the chat list shows it (null before omp named it); absent from an older server. */
+  chats: z
+    .array(
+      z.strictObject({
+        threadId: ThreadId,
+        title: z.string().max(WORK_THREAD_TITLE_MAX).nullable(),
+      }),
+    )
+    .optional(),
 });
 export type WorkThreadList = z.infer<typeof WorkThreadList>;
 

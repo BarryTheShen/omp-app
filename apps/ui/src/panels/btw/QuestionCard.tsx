@@ -4,12 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import type { ChatController } from "../../chat/controller";
-import { OmpQuestionCard } from "../../chat/HostRequests";
 import { OptionText } from "../../chat/QuestionsDialog";
-import { PlanCard } from "../../plan/PlanCard";
 import { Clamped } from "../../questions/Clamped";
-import { useOmpQuestions, usePlan } from "../../questions/waiting";
 import { Markdown } from "../../vendor/collab-web/components/transcript/Markdown";
 
 /** The radio value of Other…: no choice can have it, as the host refuses empty labels. */
@@ -20,44 +16,6 @@ const CHOICE_ROW = "flex items-start gap-2.5 max-sm:py-[13px]";
 
 /** A question's name: its header, else its text. */
 const nameOf = (record: QuestionRecord): string => record.header ?? record.question;
-
-/**
- * What stops the chat until you answer, in the Questions panel: the plan omp proposed in plan mode, and omp's questions
- * (each as above the chat's message box, and answered in either place). Questions an agent asks without stopping are
- * in Workbench.
- */
-export function QuestionsTab({ controller }: { readonly controller: ChatController }): ReactNode {
-  const plan = usePlan(controller);
-  const omp = useOmpQuestions(controller);
-  if (plan === null && omp.length === 0)
-    return (
-      <div className="flex flex-col gap-2 px-4 py-6">
-        <p className="font-medium text-t1">Nothing stops the chat</p>
-        <p className="text-[0.8125rem] text-t3">
-          A plan omp proposes in plan mode, and omp's questions that stop the chat until you answer,
-          wait here and above the message box. Questions omp asks while it keeps working are in
-          Workbench.
-        </p>
-      </div>
-    );
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 text-[0.8125rem]">
-      {plan !== null && <PlanCard controller={controller} proposal={plan} inPanel />}
-      {omp.length > 0 && (
-        <section aria-label="omp waits for your answer" className="flex flex-col gap-1.5">
-          <h3 className="px-1 pt-1 text-xs font-medium text-t3">omp waits for your answer</h3>
-          {omp.map((request) => (
-            <OmpQuestionCard
-              key={request.id}
-              request={request}
-              answerWith={(answer) => controller.answer(request.id, answer)}
-            />
-          ))}
-        </section>
-      )}
-    </div>
-  );
-}
 
 /** One question's answer as the card holds it before it goes: the choices, the written answer, the note, or a skip. */
 export interface Draft {

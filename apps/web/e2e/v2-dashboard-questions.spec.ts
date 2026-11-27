@@ -1,21 +1,26 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import type { Page } from "@playwright/test";
-import { expect, realTest, startNewChat } from "./real-omp";
+import { expect, realTest, screenshots, startNewChat } from "./real-omp";
 
 /**
  * What waits for you on the dashboard (D7) on real omp: a chat asks in a Workbench thread (`thread_ask`); the dashboard
- * counts the thread and lists its open questions under "Threads waiting on you", answered there as in Workbench, and
- * the answers reach the chat from the thread. omp's own question that stops a chat waits there too, under its name.
+ * counts the thread, and its Workbench lists every chat's threads under the chat's name, the thread picked shown beside
+ * the list, its questions answered there; the answers reach the chat from the thread. omp's own question that stops a
+ * chat waits in the dashboard's Questions, under the chat's name.
  */
 const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
 const transcript = (page: Page) => page.getByRole("region", { name: "Transcript" });
 const questions = (page: Page) =>
   page.locator('[data-tour="dashboard"]').getByRole("region", { name: "Questions", exact: true });
+const workbench = (page: Page) =>
+  page.locator('[data-tour="dashboard"]').getByRole("region", { name: "Workbench", exact: true });
 
 realTest.describe("new UI: every chat's questions on the dashboard", () => {
   realTest.setTimeout(240_000);
 
   realTest(
-    "a thread's questions wait on the dashboard; answered there, they reach the chat from the thread and leave",
+    "a thread waits in the dashboard's Workbench under its chat; picked there, its questions are answered beside the list and reach the chat",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
@@ -51,16 +56,25 @@ realTest.describe("new UI: every chat's questions on the dashboard", () => {
         timeout: 30_000,
       });
       await button.click();
-      const list = questions(page);
-      const thread = list
-        .getByRole("region", { name: "Threads waiting on you" })
-        .getByRole("region", { name: "Thread: Service setup" });
+      const board = workbench(page);
+      // Under its chat's name (the chat is named by its first message).
+      const group = board.getByRole("region", { name: /^Threads of call_tool thread_open/ });
+      await group
+        .getByRole("button", { name: /^Service setup, Open, 2 questions for you/ })
+        .click();
+      const thread = board.getByRole("region", { name: "Thread: Service setup" });
       const card = thread.getByRole("region", { name: "Questions: Database, Name" });
       await expect(card).toContainText("Which database should the app use?", { timeout: 30_000 });
+      await board.scrollIntoViewIfNeeded();
+      mkdirSync(screenshots, { recursive: true });
+      await page.screenshot({ path: join(screenshots, "dashboard-workbench.png") });
       await card.getByRole("radio", { name: "Postgres" }).click();
       await card.getByRole("textbox", { name: "Your answer" }).fill("atlas");
       await card.getByRole("button", { name: "Send answers" }).click();
-      await expect(list).toContainText("No question waits for you.", { timeout: 60_000 });
+      await expect(thread.getByRole("region", { name: "Answered questions" })).toContainText(
+        "Database: Postgres",
+        { timeout: 60_000 },
+      );
       await expect(button).toHaveAccessibleName("Dashboard");
 
       await page.getByRole("tablist", { name: "Workspaces" }).getByRole("tab").first().click();

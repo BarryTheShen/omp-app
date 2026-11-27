@@ -963,6 +963,7 @@ export async function createCompositionServer(
   const workThreads = createWorkThreadsRuntime({
     store: workThreadStore,
     publish,
+    titleOf: chatTitle,
     deliver: async (target, text) => {
       const delivery = await a0Runtime.tasks.deliver(target, text, { steer: true });
       if (delivery.outcome === "sent") return delivery.threadId;

@@ -68,7 +68,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
   );
 
   realTest(
-    "omp's plan also waits in the Questions panel; approved there, the chat's plan card closes",
+    "omp's plan also waits at the top of the chat's Workbench; approved there, the chat's plan card closes",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await newChat(page);
@@ -78,10 +78,10 @@ realTest.describe("new UI plan mode and goal mode", () => {
       const review = page.getByRole("dialog", { name: "Plan ready for review" });
       await expect(review).toBeVisible({ timeout: 60_000 });
 
-      // The rail counts it; the Questions panel lists it, the plan and its two decisions as in the chat.
+      // The rail counts it; the chat's Workbench lists it, the plan and its two decisions as in the chat.
       await page
         .getByRole("navigation", { name: "Side panel" })
-        .getByRole("button", { name: "Questions, 1 waiting for you" })
+        .getByRole("button", { name: "Workbench, 1 waiting for you" })
         .click();
       const listed = page
         .getByRole("complementary", { name: "Side panel" })
@@ -99,7 +99,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
   );
 
   realTest(
-    "a plan waiting for review is there again after the server restarts, in the chat and in Questions; kept planning, it stays gone",
+    "a plan waiting for review is there again after the server restarts, in the chat and in its Workbench; kept planning, it stays gone",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await newChat(page);
@@ -122,7 +122,7 @@ realTest.describe("new UI plan mode and goal mode", () => {
       );
       await again
         .getByRole("navigation", { name: "Side panel" })
-        .getByRole("button", { name: "Questions, 1 waiting for you" })
+        .getByRole("button", { name: "Workbench, 1 waiting for you" })
         .click();
       const listed = again
         .getByRole("complementary", { name: "Side panel" })

@@ -1,46 +1,13 @@
 import type { AppClient } from "@omp-app/client";
 import {
-  type OpenQuestionsChat,
-  QuestionsPort,
   type WorkThreadEntry,
   type WorkThreadId,
   type WorkThreadList,
   type WorkThreadSummary,
   WorkThreadsPort,
 } from "@omp-app/contracts";
-import { isOmpQuestion } from "@omp-app/contracts/chat-host";
 import { useEffect, useState } from "react";
 import { follow } from "../../follow";
-
-/**
- * Every chat that omp stopped to ask you something (its own questions, a plan to approve), with those questions, kept
- * current from the server's `changed`; empty from a server that keeps no such list.
- */
-export function useStoppedChats(client: AppClient): readonly OpenQuestionsChat[] {
-  const [chats, setChats] = useState<readonly OpenQuestionsChat[]>([]);
-  useEffect(() => {
-    let active = true;
-    const read = (): void => {
-      client
-        .port(QuestionsPort)
-        .list({})
-        .then(
-          (listed) =>
-            active && setChats(listed.chats.filter((chat) => chat.requests.some(isOmpQuestion))),
-          () => undefined,
-        );
-    };
-    read();
-    const stopChanged = follow(client.subscribe(QuestionsPort, "changed"), read);
-    const stopOutage = client.onOutage(read);
-    return () => {
-      active = false;
-      stopChanged();
-      stopOutage();
-    };
-  }, [client]);
-  return chats;
-}
 
 /** Whether a thread waits on the person: a question with no answer, or the agent set it waiting. */
 export const waitsOnYou = (thread: WorkThreadSummary): boolean =>

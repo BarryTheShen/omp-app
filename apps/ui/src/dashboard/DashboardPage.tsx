@@ -34,6 +34,7 @@ import { Switch } from "@/components/ui/switch";
 import type { ChatTarget } from "../chat/controller";
 import { follow } from "../follow";
 import { AccountsSection } from "../panels/usage/UsagePanel";
+import { DashboardWorkbench } from "../panels/workbench/DashboardWorkbench";
 import { useShareLink } from "../shares/link";
 import { useRunningChats } from "../sidebar/useRunningChats";
 import { ChatsSection } from "./ChatsSection";
@@ -990,11 +991,11 @@ function useUsageControl(client: AppClient, running: readonly RunningChat[]) {
 /** The dashboard's parts, in the order the page shows them; the section bar scrolls to each. */
 const PARTS = [
   { id: "overview", label: "Overview" },
+  { id: "workbench", label: "Workbench" },
   { id: "chats", label: "Chats" },
   { id: "tasks", label: "Tasks" },
   { id: "usage", label: "Usage" },
   { id: "statistics", label: "Statistics" },
-  { id: "questions", label: "Questions" },
   { id: "todo", label: "To do" },
 ] as const;
 
@@ -1071,6 +1072,28 @@ export function DashboardBody({
           >
             <Overview client={client} running={running} />
           </section>
+          <div className="min-w-0 @5xl:col-span-2">
+            <Part id="workbench">
+              <Section
+                title="Workbench"
+                hint="Every chat's threads, one per plan, feature, bug or question: pick one to read it, answer its questions and write in it."
+              >
+                <DashboardWorkbench
+                  client={client}
+                  {...(onOpenChat === undefined ? {} : { onOpenChat })}
+                />
+              </Section>
+              <Section
+                title="Questions"
+                hint="Chats omp stopped to ask you something. Answered here, the chat goes on."
+              >
+                <QuestionsSection
+                  client={client}
+                  {...(onOpenChat === undefined ? {} : { onOpenChat })}
+                />
+              </Section>
+            </Part>
+          </div>
           <div className="flex min-w-0 flex-col gap-4">
             <Part id="chats">
               <Section
@@ -1092,17 +1115,6 @@ export function DashboardBody({
                 <TasksSection
                   client={client}
                   running={running}
-                  {...(onOpenChat === undefined ? {} : { onOpenChat })}
-                />
-              </Section>
-            </Part>
-            <Part id="questions">
-              <Section
-                title="Questions"
-                hint="What every chat waits on you for: omp's questions that stop it, and those its agent asked without waiting. Answered here, a question goes to its chat."
-              >
-                <QuestionsSection
-                  client={client}
                   {...(onOpenChat === undefined ? {} : { onOpenChat })}
                 />
               </Section>

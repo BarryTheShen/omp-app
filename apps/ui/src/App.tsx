@@ -63,7 +63,7 @@ import { ChatDetails } from "./panels/ChatDetails";
 import { PanelRail } from "./panels/PanelRail";
 import { hidePanel, showPanel, togglePanel, usePanelState } from "./panels/panel-state";
 import { SidePaneContext } from "./panels/SidePane";
-import { useWorkThreadList, waitsOnYou } from "./panels/workbench/threads";
+import { useWorkThreadList } from "./panels/workbench/threads";
 import { traceFollow } from "./perf/followTrace";
 import { traceScrolling } from "./perf/scrollTrace";
 import { traceViewport } from "./perf/viewportTrace";
@@ -465,8 +465,8 @@ function Shell({
   const showWhatsNew = useCallback(() => setWhatsNew(true), []);
   /** Every chat's open questions and the to-dos due, counted on the dashboard's buttons (D7). */
   const dashboardWaiting = useDashboardWaiting(client);
-  /** Workbench's threads that wait on you (a question to answer, or set waiting), counted on its rail button. */
-  const workbenchWaiting = useWorkThreadList(client).list?.threads.filter(waitsOnYou).length ?? 0;
+  /** Workbench's threads, for the rail: its button counts the focused chat's that wait on you. */
+  const workThreads = useWorkThreadList(client).list?.threads ?? null;
   /** A chat's row menu: an item named after the chat, linked to it, in the dashboard's to-do list. */
   const addChatTodo = useCallback(
     async (chat: TodoChat): Promise<void> => {
@@ -763,7 +763,7 @@ function Shell({
           chat={focusedChat}
           onDashboard={showDashboard}
           dashboardWaiting={dashboardWaiting}
-          workbenchWaiting={workbenchWaiting}
+          workThreads={workThreads}
         />
       )}
       <Palette

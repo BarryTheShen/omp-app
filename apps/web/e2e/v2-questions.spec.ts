@@ -2,25 +2,23 @@ import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
- * What waits for your answer, in the new UI on real omp, now that an agent asks in Workbench threads (`thread_ask`): omp's
- * own question that stops a chat waits in the Questions panel too, answered there; `/btw` brings the side questions
- * forward also while it waits; and in the lite view, which has no side panel, the questions of the chat's threads show
- * above its message box and are answered there, reaching the chat from the thread.
+ * What waits for your answer, in the new UI on real omp: omp's own question that stops a chat waits at the top of that
+ * chat's Workbench too, answered there; the Questions panel holds only the side questions (`/btw`); and in the lite
+ * view, which has no side panel, the questions of the chat's threads show above its message box and are answered there,
+ * reaching the chat from the thread.
  */
 
 const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
 const transcript = (page: Page) => page.getByRole("region", { name: "Transcript" });
-const panel = (page: Page) =>
-  page
-    .getByRole("complementary", { name: "Side panel" })
-    .getByRole("tabpanel", { name: "Questions" });
+const side = (page: Page, name: string) =>
+  page.getByRole("complementary", { name: "Side panel" }).getByRole("tabpanel", { name });
 const rail = (page: Page) => page.getByRole("navigation", { name: "Side panel" });
 
 realTest.describe("questions that wait for you", () => {
   realTest.setTimeout(240_000);
 
   realTest(
-    "omp's question that stops the chat waits in the Questions panel too; answered there, the chat's card closes and omp goes on",
+    "omp's question that stops the chat waits at the top of its Workbench too; answered there, the chat's card closes and omp goes on",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
@@ -29,9 +27,9 @@ realTest.describe("questions that wait for you", () => {
       await box(page).press("Enter");
       const inChat = page.getByRole("dialog", { name: "Questions from omp" });
       await expect(inChat).toBeVisible({ timeout: 60_000 });
-      await rail(page).getByRole("button", { name: "Questions, 1 waiting for you" }).click();
-      const listed = panel(page)
-        .getByRole("region", { name: "omp waits for your answer" })
+      await rail(page).getByRole("button", { name: "Workbench, 1 waiting for you" }).click();
+      const listed = side(page, "Workbench")
+        .getByRole("region", { name: "The chat waits for you" })
         .getByRole("region", { name: "Questions from omp" });
       await listed.getByRole("radio", { name: "Postgres" }).click();
       await listed.getByRole("button", { name: "Submit" }).click();
@@ -41,14 +39,14 @@ realTest.describe("questions that wait for you", () => {
         timeout: 60_000,
       });
       await expect(
-        rail(page).getByRole("button", { name: "Questions", exact: true }),
+        rail(page).getByRole("button", { name: "Workbench", exact: true }),
       ).toBeVisible();
       expect(realApp.problems).toEqual([]);
     },
   );
 
   realTest(
-    "/btw brings the side questions forward, also while omp's question waits for you",
+    "the Questions panel holds the side questions alone: omp's question waiting is not in it, and it has no tabs",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
@@ -58,24 +56,15 @@ realTest.describe("questions that wait for you", () => {
       await expect(page.getByRole("dialog", { name: "Questions from omp" })).toBeVisible({
         timeout: 60_000,
       });
-      // The panel opens on the question that waits.
-      await rail(page).getByRole("button", { name: "Questions, 1 waiting for you" }).click();
-      const forYou = panel(page).getByRole("tab", { name: "Questions for you 1" });
-      const side = panel(page).getByRole("tab", { name: "Side questions" });
-      await expect(forYou).toHaveAttribute("aria-selected", "true");
+      // The Questions button counts nothing: what stops the chat is counted on Workbench's.
       await expect(
-        panel(page).getByRole("region", { name: "omp waits for your answer" }),
+        rail(page).getByRole("button", { name: "Questions", exact: true }),
       ).toBeVisible();
-
-      // `/btw` alone opens the side questions; the question still waits.
-      await box(page).fill("/btw");
-      await box(page).press("Enter");
-      await expect(box(page)).toHaveValue("/btw ");
-      await box(page).press("Enter");
-      await expect(side).toHaveAttribute("aria-selected", "true");
-      await expect(
-        rail(page).getByRole("button", { name: "Questions, 1 waiting for you" }),
-      ).toBeVisible();
+      await rail(page).getByRole("button", { name: "Questions", exact: true }).click();
+      const panel = side(page, "Questions");
+      await expect(panel).toBeVisible();
+      await expect(panel.getByRole("tab")).toHaveCount(0);
+      await expect(panel.getByRole("region", { name: "Questions from omp" })).toHaveCount(0);
       expect(realApp.problems).toEqual([]);
     },
   );

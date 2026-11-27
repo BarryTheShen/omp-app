@@ -32,6 +32,8 @@ export interface WorkThreadsContext {
   /** Publishes an event into the replay hub. */
   readonly publish: (stream: StreamKey, payload: unknown) => unknown;
   readonly now?: () => number;
+  /** A chat's name as the chat list shows it; null before omp named it. */
+  readonly titleOf?: (threadId: ThreadId) => Promise<string | null>;
 }
 
 /** A page's change is the person's. */
@@ -66,7 +68,7 @@ export function openedNotice(
     "",
     text,
     "",
-    `Take it up, and post your updates, questions and answers in the thread (its id: ${summary.id}).`,
+    `Reply in the thread, not in this chat: your answer, updates and questions go there (thread_update, thread_ask; its id: ${summary.id}). In this chat, one line at most, naming the thread.`,
   ].join("\n");
 }
 
@@ -77,7 +79,7 @@ export function messageNotice(summary: WorkThreadSummary, text: string): string 
     "",
     text,
     "",
-    `Answer in the thread (${summary.id}).`,
+    `Reply in the thread, not in this chat (thread_update; its id: ${summary.id}). In this chat, one line at most, naming the thread.`,
   ].join("\n");
 }
 
@@ -181,7 +183,23 @@ export function createWorkThreadsRuntime(context: WorkThreadsContext): {
   };
 
   const handlers = {
-    list: (): WorkThreadList => ({ threads: store.list(), mainChat: store.mainChat() }),
+    list: async (): Promise<WorkThreadList> => {
+      const threads = store.list();
+      const owners = [
+        ...new Set(threads.flatMap((thread) => (thread.owner === null ? [] : [thread.owner]))),
+      ];
+      const titleOf = context.titleOf;
+      const chats =
+        titleOf === undefined
+          ? []
+          : await Promise.all(
+              owners.map(async (threadId) => ({
+                threadId,
+                title: ((await titleOf(threadId).catch(() => null)) ?? null)?.slice(0, 200) ?? null,
+              })),
+            );
+      return { threads, mainChat: store.mainChat(), chats };
+    },
     read: (args: unknown) => {
       const summary = found((args as { id: string }).id);
       return { summary, entries: [...(store.read(summary.id)?.entries ?? [])] };

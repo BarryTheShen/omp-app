@@ -12,8 +12,6 @@ import type { ChatTarget } from "../chat/controller";
 import { OmpQuestionCard } from "../chat/HostRequests";
 import { follow } from "../follow";
 import { lastSeen } from "../lastSeen";
-import { ThreadOpenAsks } from "../panels/workbench/ThreadOpenAsks";
-import { useWorkThreadList, waitsOnYou } from "../panels/workbench/threads";
 import { problemWords } from "./problems";
 
 const LATER = "Questions from every chat come with the next server update.";
@@ -64,9 +62,9 @@ const folderName = (folder: string | null): string | null =>
   folder === null ? null : (folder.split("/").filter(Boolean).at(-1) ?? folder);
 
 /**
- * What waits for you in every chat: omp's questions that stop a chat until you answer, each chat's under its name, as
- * above the chat's message box; then Workbench's threads that wait on you, their open questions answered here as in
- * Workbench. Answered here, a question leaves once its answer went to the chat; Open chat goes to it.
+ * omp's questions that stop a chat until you answer, in every chat, each chat's under its name, as above the chat's
+ * message box. Answered here, a question leaves once omp has its answer; Open chat goes to it. Questions asked in
+ * threads are in the Workbench beside this.
  */
 export function QuestionsSection({
   client,
@@ -77,7 +75,6 @@ export function QuestionsSection({
 }): ReactNode {
   const { chats, problem } = useOpenQuestions(client);
   const session = useMemo(() => client.port(ChatSessionPort), [client]);
-  const threads = (useWorkThreadList(client).list?.threads ?? []).filter(waitsOnYou);
   return (
     <div className="flex flex-col gap-4">
       {problem !== null && (
@@ -85,10 +82,10 @@ export function QuestionsSection({
           {problem}
         </p>
       )}
-      {chats !== null && chats.length === 0 && threads.length === 0 && (
+      {chats !== null && chats.length === 0 && (
         <p className="text-sm text-t3">
-          No question waits for you. When omp stops a chat to ask you, or a chat asks you in a
-          Workbench thread, the question shows here and waits for you.
+          No chat is stopped waiting for you. When omp stops a chat to ask you, the question shows
+          here and above the chat's message box.
         </p>
       )}
       {(chats ?? []).map((chat) => {
@@ -133,20 +130,6 @@ export function QuestionsSection({
           </section>
         );
       })}
-      {threads.length > 0 && (
-        <section aria-label="Threads waiting on you" className="flex flex-col gap-2">
-          <h4 className="text-sm font-medium text-t1">Threads waiting on you</h4>
-          {threads.map((thread) =>
-            thread.unanswered > 0 ? (
-              <ThreadOpenAsks key={thread.id} client={client} id={thread.id} title={thread.title} />
-            ) : (
-              <p key={thread.id} className="text-xs text-t2">
-                {thread.title}: waiting on you{thread.last === null ? "" : ` (${thread.last.text})`}
-              </p>
-            ),
-          )}
-        </section>
-      )}
     </div>
   );
 }
