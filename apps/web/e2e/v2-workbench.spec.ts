@@ -5,7 +5,7 @@ import { expect, realTest, screenshots, startNewChat } from "./real-omp";
 
 /**
  * Workbench (threads, one per piece of work) in the new UI on real omp: the agent opens a thread and asks in it with
- * its `thread_*` tools; the rail counts what waits on you; the panel lists the thread under Needs you; you answer in the
+ * its `thread_*` tools; the rail counts what waits on you; the panel lists the thread under Open; you answer in the
  * thread and the chat gets the answers as a notice from Workbench. A thread you open goes to the chat you pick, as a
  * notice, and what you write in it too; another page follows it live.
  */
@@ -60,10 +60,10 @@ realTest.describe("Workbench", () => {
         timeout: 90_000,
       });
 
-      // The rail counts the thread that waits on you; the panel opens on Needs you.
+      // The rail counts the thread that waits on you; the panel opens on Open, which counts it.
       await rail(page).getByRole("button", { name: "Workbench, 1 waiting for you" }).click();
       const panel = workbench(page);
-      await expect(panel.getByRole("tab", { name: "Needs you (1)" })).toHaveAttribute(
+      await expect(panel.getByRole("tab", { name: "Open 1" })).toHaveAttribute(
         "aria-selected",
         "true",
       );
@@ -119,7 +119,7 @@ realTest.describe("Workbench", () => {
 
       await rail(page).getByRole("button", { name: "Workbench", exact: true }).click();
       const panel = workbench(page);
-      await expect(panel).toContainText("Nothing waits on you.");
+      await expect(panel).toContainText("No open threads.");
       await panel.getByRole("button", { name: "New thread" }).click();
       const form = panel.getByRole("region", { name: "New thread" });
       await form.getByRole("textbox", { name: "Title" }).fill("Relay test");
@@ -144,7 +144,6 @@ realTest.describe("Workbench", () => {
       await expect(transcript(other).getByText("pong").first()).toBeVisible({ timeout: 60_000 });
       await rail(other).getByRole("button", { name: "Workbench", exact: true }).click();
       const otherPanel = workbench(other);
-      await otherPanel.getByRole("tab", { name: "All" }).click();
       await otherPanel.getByRole("button", { name: "Relay test, Open" }).click();
       const otherThread = otherPanel.getByRole("region", { name: "Thread: Relay test" });
       await expect(otherThread.getByRole("list", { name: "Timeline" })).toContainText(
@@ -173,9 +172,12 @@ realTest.describe("Workbench", () => {
       await secondBox.press("Enter");
       // The panel is still open and follows the chat you are in: once the new chat has its id, its own list shows.
       const secondPanel = workbench(page);
-      await expect(secondPanel.getByRole("tab", { name: "All" })).toBeVisible({ timeout: 90_000 });
-      await secondPanel.getByRole("tab", { name: "All" }).click();
-      await expect(secondPanel).toContainText("No threads here.");
+      await expect(secondPanel.getByRole("tab", { name: "Open 0" })).toBeVisible({
+        timeout: 90_000,
+      });
+      await expect(secondPanel).toContainText("No open threads.");
+      await secondPanel.getByRole("tab", { name: "Closed 0" }).click();
+      await expect(secondPanel).toContainText("No closed threads.");
       await expect(secondPanel.getByRole("button", { name: /^Relay test/ })).toHaveCount(0);
 
       expect(realApp.problems).toEqual([]);

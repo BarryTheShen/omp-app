@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
   type OpenWorkThreadArgs,
   ThreadId,
+  WorkBriefing,
   type WorkThreadAnswer,
   type WorkThreadAuthor,
   WorkThreadEntry,
@@ -19,6 +20,8 @@ const SUFFIX = ".jsonl";
 /** The main chat, beside the threads' files (not a `.jsonl`, so never read as a thread). */
 const SETTINGS = "settings.json";
 const Settings = z.object({ mainChat: ThreadId.nullable() });
+/** The day's briefing, beside them too. */
+const BRIEFING = "briefing.json";
 /** How much of the latest words a row shows. */
 const LAST_TEXT_MAX = 160;
 
@@ -168,6 +171,7 @@ export class WorkThreadStore {
   readonly #newId: () => string;
   #queue: Promise<unknown> = Promise.resolve();
   #mainChat: ThreadId | null = null;
+  #briefing: WorkBriefing | null = null;
 
   private constructor(folder: string, options: WorkThreadStoreOptions) {
     this.folder = folder;
@@ -198,6 +202,15 @@ export class WorkThreadStore {
         // Settings it cannot read: no main chat until one is set again.
       }
     }
+    const briefing = await readFile(join(folder, BRIEFING), "utf8").catch(() => null);
+    if (briefing !== null) {
+      try {
+        const parsed = WorkBriefing.safeParse(JSON.parse(briefing));
+        if (parsed.success) store.#briefing = parsed.data;
+      } catch {
+        // A briefing it cannot read: none until the next is written.
+      }
+    }
     return store;
   }
 
@@ -213,6 +226,18 @@ export class WorkThreadStore {
         `${JSON.stringify({ mainChat: threadId })}\n`,
       );
       this.#mainChat = threadId;
+    });
+  }
+
+  /** The latest briefing; null before the first. */
+  briefing(): WorkBriefing | null {
+    return this.#briefing;
+  }
+
+  setBriefing(briefing: WorkBriefing): Promise<void> {
+    return this.#serial(async () => {
+      await writeFileAtomic(join(this.folder, BRIEFING), `${JSON.stringify(briefing)}\n`);
+      this.#briefing = briefing;
     });
   }
 

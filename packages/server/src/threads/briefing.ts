@@ -1,10 +1,9 @@
-import type { ThreadId, WorkThreadSummary } from "@omp-app/contracts";
+import type { ThreadId, WorkBriefing, WorkThreadSummary } from "@omp-app/contracts";
 import type { WorkThreadStore } from "./store";
 
 /** The hour of the day the briefing is written, in the server's own time. */
 export const BRIEFING_HOUR = 9;
 const DAY_MS = 86_400_000;
-const APP = { kind: "app" } as const;
 
 /** The next `hour`:00 in the server's own time strictly after `now` (epoch ms); daylight saving is the clock's. */
 export function nextBriefingAt(now: number, hour: number = BRIEFING_HOUR): number {
@@ -33,94 +32,86 @@ const STATE_WORDS: Record<WorkThreadSummary["state"], string> = {
   closed: "closed",
 };
 
-/** A thread as a line of the briefing: its title, state, bar, and its latest words. */
-function line(thread: WorkThreadSummary): string {
+/** A chat's name as the chat list shows it; null before omp named it. */
+export type ChatTitleOf = (threadId: ThreadId) => Promise<string | null>;
+
+/** A thread as a line of the briefing: its title, its chat, state, bar, and its latest words. */
+function line(thread: WorkThreadSummary, chats: ReadonlyMap<ThreadId, string>): string {
+  const chat = thread.owner === null ? "" : ` in ${chats.get(thread.owner) ?? "a chat"}`;
   const bar = thread.progress === null ? "" : `, ${thread.progress.done}/${thread.progress.total}`;
   const asks = thread.unanswered > 0 ? `, ${thread.unanswered} question(s) for you` : "";
   const last = thread.last === null ? "" : `: ${thread.last.text}`;
-  return `- **${thread.title}** (${STATE_WORDS[thread.state]}${bar}${asks})${last}`;
-}
-
-/** The briefing thread, open: the one kept, else a new one owned by the main chat. */
-async function briefingThread(store: WorkThreadStore): Promise<WorkThreadSummary> {
-  const kept = store
-    .list()
-    .find((thread) => thread.kind === "briefing" && thread.state !== "closed");
-  if (kept !== undefined) return kept;
-  return store.open(
-    {
-      title: "Daily briefing",
-      kind: "briefing",
-      text: "One entry each morning: what moved since the day before, what waits on you, and what is in progress.",
-      owner: store.mainChat(),
-    },
-    APP,
-  );
+  return `- **${thread.title}**${chat} (${STATE_WORDS[thread.state]}${bar}${asks})${last}`;
 }
 
 /**
- * Writes the day's briefing into the briefing thread, as the app: the threads that moved in the 24 hours before `now`,
- * those waiting on you, and those in progress. Nothing when the day's entry is there already (a restart after 09:00),
- * so a day has one. Answers the thread and its words, or null when there was nothing to write.
+ * Writes the day's briefing over every chat's threads, for the dashboard: the threads that moved in the 24 hours before
+ * `now`, those waiting on you, and those in progress, each with its chat's name. Nothing when the day's is written
+ * already (a restart after 09:00), so a day has one. Answers it, or null when there was nothing to write.
  */
 export async function writeBriefing(
   store: WorkThreadStore,
   now: number,
-): Promise<{ readonly thread: WorkThreadSummary; readonly text: string } | null> {
-  const thread = await briefingThread(store);
-  const since = lastBriefingAt(now);
-  const written = store
-    .read(thread.id)
-    ?.entries.some(
-      (entry) => entry.type === "update" && entry.by.kind === "app" && entry.at >= since,
-    );
-  if (written === true) return null;
-  const others = store.list().filter((summary) => summary.id !== thread.id);
-  const moved = others.filter((summary) => summary.updatedAt > now - DAY_MS);
-  const waiting = others.filter(waitsOnYou);
-  const working = others.filter((summary) => summary.state === "in_progress");
+  titleOf?: ChatTitleOf,
+): Promise<WorkBriefing | null> {
+  const kept = store.briefing();
+  if (kept !== null && kept.at >= lastBriefingAt(now)) return null;
+  // Briefing threads are from the releases that wrote the briefing into a thread.
+  const threads = store.list().filter((summary) => summary.kind !== "briefing");
+  const owners = [
+    ...new Set(threads.flatMap((thread) => (thread.owner === null ? [] : [thread.owner]))),
+  ];
+  const chats = new Map<ThreadId, string>();
+  if (titleOf !== undefined)
+    for (const owner of owners) {
+      const title = await titleOf(owner).catch(() => null);
+      if (title !== null) chats.set(owner, title.slice(0, 80));
+    }
+  const moved = threads.filter((summary) => summary.updatedAt > now - DAY_MS);
+  const waiting = threads.filter(waitsOnYou);
+  const working = threads.filter((summary) => summary.state === "in_progress");
   const day = new Intl.DateTimeFormat("en", {
     weekday: "long",
     month: "long",
     day: "numeric",
   }).format(now);
-  const part = (heading: string, threads: readonly WorkThreadSummary[], none: string): string =>
-    [`**${heading}**`, ...(threads.length === 0 ? [none] : threads.map(line))].join("\n");
+  const part = (heading: string, list: readonly WorkThreadSummary[], none: string): string =>
+    [`**${heading}**`, ...(list.length === 0 ? [none] : list.map((one) => line(one, chats)))].join(
+      "\n",
+    );
   const text = [
     `Briefing for ${day}.`,
     part("Moved since yesterday", moved, "Nothing moved."),
     part("Waiting on you", waiting, "Nothing waits on you."),
     part("In progress", working, "Nothing in progress."),
-  ].join("\n\n");
-  const posted = await store.post(thread.id, { type: "update", text }, APP);
-  return { thread: posted.summary, text };
+  ]
+    .join("\n\n")
+    .slice(0, 20_000);
+  const briefing = { at: now, text };
+  await store.setBriefing(briefing);
+  return briefing;
 }
 
 export interface BriefingSchedule {
   readonly store: WorkThreadStore;
-  /** Asks the main chat to add what is next, once it is free (the task queue). */
-  readonly askMainChat: (threadId: ThreadId, text: string) => Promise<void>;
+  readonly titleOf?: ChatTitleOf;
+  /** Told after each briefing is written, so every device reads it. */
+  readonly onWritten?: (briefing: WorkBriefing) => void;
   readonly now?: () => number;
   readonly onProblem?: (problem: string) => void;
 }
 
-/** The notice that asks the main chat to add to the day's entry. */
-export const briefingNotice = (thread: WorkThreadSummary): string =>
-  `Thread ${thread.id} "${thread.title}": today's briefing is written there. Read it (thread_read), then add what is next for each thread in progress and what you need from the person, with thread_update in that thread.`;
-
 /**
- * The briefing each day at 09:00, the server's time: written into the briefing thread, then the main chat is asked to
- * add what is next. A start after the day's 09:00 with no entry yet writes it at once. Stops when the answer is called.
+ * The briefing each day at 09:00, the server's time, for the dashboard. A start after the day's 09:00 with none written
+ * yet writes it at once. Stops when the answer is called.
  */
 export function startBriefings(schedule: BriefingSchedule): () => void {
   const now = schedule.now ?? Date.now;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
   const run = async (): Promise<void> => {
-    const written = await writeBriefing(schedule.store, now());
-    const main = schedule.store.mainChat();
-    if (written !== null && main !== null)
-      await schedule.askMainChat(main, briefingNotice(written.thread));
+    const written = await writeBriefing(schedule.store, now(), schedule.titleOf);
+    if (written !== null) schedule.onWritten?.(written);
   };
   const plan = (): void => {
     if (stopped) return;

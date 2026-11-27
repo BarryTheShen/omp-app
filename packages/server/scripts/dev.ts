@@ -972,18 +972,11 @@ export async function createCompositionServer(
       return target.kind === "chat" ? target.threadId : null;
     },
   });
-  // Workbench's daily briefing at 09:00, the server's time: written into its thread, then the main chat is asked, once
-  // it is free, to add what is next.
+  // The daily briefing at 09:00, the server's time, over every chat's threads, for the dashboard.
   const stopBriefings = startBriefings({
     store: workThreadStore,
-    askMainChat: async (threadId, text) => {
-      await taskQueue.add({
-        text: withAppNotice("thread", text),
-        target: { kind: "chat", threadId },
-        label: "Daily briefing",
-        when: { kind: "free" },
-      });
-    },
+    titleOf: chatTitle,
+    onWritten: () => workThreads.refreshed(),
     onProblem: (problem) => logger.warn("threads.briefing_failed", { problem }),
   });
   // omp's questions that stop a chat until you answer, in every chat, for the dashboard and Workbench, and `changed`

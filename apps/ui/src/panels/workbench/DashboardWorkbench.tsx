@@ -3,7 +3,7 @@ import type { ThreadId, WorkThreadId, WorkThreadSummary } from "@omp-app/contrac
 import { type ReactNode, useState } from "react";
 import type { ChatTarget } from "../../chat/controller";
 import { TabButton } from "../btw/BtwPanel";
-import { FILTERS, type Filter, filtered, useWorkThreadList, waitsOnYou } from "./threads";
+import { FILTERS, type Filter, filtered, tabName, useWorkThreadList } from "./threads";
 import { ThreadRow, ThreadView } from "./WorkbenchPanel";
 
 /** A chat's group in the list: its id, its name, and its threads in the list's order. */
@@ -28,7 +28,7 @@ export function DashboardWorkbench({
   readonly onOpenChat?: (target: ChatTarget) => void;
 }): ReactNode {
   const { list, missing } = useWorkThreadList(client);
-  const [filter, setFilter] = useState<Filter>("Needs you");
+  const [filter, setFilter] = useState<Filter>("Open");
   const [chat, setChat] = useState<string>(ALL);
   const [picked, setPicked] = useState<WorkThreadId | null>(null);
   if (missing) return <p className="text-sm text-t3">This server has no Workbench yet.</p>;
@@ -37,9 +37,9 @@ export function DashboardWorkbench({
   const names = new Map((list.chats ?? []).map((one) => [one.threadId as string, one.title]));
   const nameOf = (owner: ThreadId | null): string =>
     owner === null ? "No chat" : (names.get(owner) ?? "A chat");
+  const mine = list.threads.filter((thread) => chat === ALL || thread.owner === chat);
   const groups: ChatGroup[] = [];
-  for (const thread of filtered(list.threads, filter)) {
-    if (chat !== ALL && thread.owner !== chat) continue;
+  for (const thread of filtered(mine, filter)) {
     const group = groups.find((one) => one.threadId === thread.owner);
     if (group === undefined)
       groups.push({ threadId: thread.owner, title: nameOf(thread.owner), threads: [thread] });
@@ -48,9 +48,6 @@ export function DashboardWorkbench({
   const owners = [
     ...new Set(list.threads.flatMap((thread) => (thread.owner === null ? [] : [thread.owner]))),
   ];
-  const waiting = list.threads.filter(
-    (thread) => waitsOnYou(thread) && (chat === ALL || thread.owner === chat),
-  ).length;
   const shownPicked = picked !== null && list.threads.some((thread) => thread.id === picked);
 
   return (
@@ -66,7 +63,7 @@ export function DashboardWorkbench({
           <div role="tablist" aria-label="Threads" className="row-scroll flex gap-1">
             {FILTERS.map((name) => (
               <TabButton key={name} selected={filter === name} onClick={() => setFilter(name)}>
-                {name === "Needs you" && waiting > 0 ? `Needs you (${waiting})` : name}
+                {tabName(name, mine)}
               </TabButton>
             ))}
           </div>
@@ -87,7 +84,7 @@ export function DashboardWorkbench({
         </div>
         {groups.length === 0 ? (
           <p className="px-1 py-2 text-sm text-t3">
-            {filter === "Needs you" ? "Nothing waits on you." : "No threads here."}
+            {filter === "Open" ? "No open threads." : "No closed threads."}
           </p>
         ) : (
           groups.map((group) => (

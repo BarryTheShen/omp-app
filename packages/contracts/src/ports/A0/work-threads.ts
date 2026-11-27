@@ -216,9 +216,19 @@ export const WorkThreadTarget = z.discriminatedUnion("kind", [
 ]);
 export type WorkThreadTarget = z.infer<typeof WorkThreadTarget>;
 
+/** The day's briefing over every chat's threads, as the app wrote it at its hour. */
+export const WorkBriefing = z.strictObject({
+  at: z.number(),
+  text: z.string().max(WORK_THREAD_TEXT_MAX),
+});
+export type WorkBriefing = z.infer<typeof WorkBriefing>;
+
 const ById = { id: WorkThreadId };
 
-/** The list, the chat that takes a thread no chat owns (null: none set), and the names of the chats that own threads. */
+/**
+ * The list, the chat that takes a thread no chat owns (null: none set), the names of the chats that own threads, and
+ * the day's briefing.
+ */
 export const WorkThreadList = z.strictObject({
   threads: z.array(WorkThreadSummary),
   mainChat: ThreadId.nullable(),
@@ -231,6 +241,8 @@ export const WorkThreadList = z.strictObject({
       }),
     )
     .optional(),
+  /** The latest briefing (null before the first); absent from an older server. */
+  briefing: WorkBriefing.nullable().optional(),
 });
 export type WorkThreadList = z.infer<typeof WorkThreadList>;
 

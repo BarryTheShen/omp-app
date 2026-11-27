@@ -131,6 +131,8 @@ export function answersNotice(
 export function createWorkThreadsRuntime(context: WorkThreadsContext): {
   readonly registration: PortRegistration;
   readonly stop: () => void;
+  /** Tells every device to read the list again (the day's briefing is written). */
+  readonly refreshed: () => void;
 } {
   const now = context.now ?? Date.now;
   const changed = streamKey(WorkThreadsPort.name, "changed");
@@ -198,7 +200,7 @@ export function createWorkThreadsRuntime(context: WorkThreadsContext): {
                 title: ((await titleOf(threadId).catch(() => null)) ?? null)?.slice(0, 200) ?? null,
               })),
             );
-      return { threads, mainChat: store.mainChat(), chats };
+      return { threads, mainChat: store.mainChat(), chats, briefing: store.briefing() };
     },
     read: (args: unknown) => {
       const summary = found((args as { id: string }).id);
@@ -287,5 +289,9 @@ export function createWorkThreadsRuntime(context: WorkThreadsContext): {
       return null;
     },
   };
-  return { registration: { port: WorkThreadsPort, context, handlers }, stop };
+  return {
+    registration: { port: WorkThreadsPort, context, handlers },
+    stop,
+    refreshed: () => context.publish(changed, { id: null, at: now() }),
+  };
 }

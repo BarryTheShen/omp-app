@@ -2970,7 +2970,7 @@ const WORKBENCH_TOUR: Tour = {
     {
       target: WORKBENCH_PANEL,
       title: "What waits on you comes first",
-      text: "<b>Needs you</b> lists threads with a question for you, or waiting on you. A thread shows the agent's updates with a bar of its steps, its questions to answer, and a box to write in: what you write and answer reaches the thread's chat at once, also while it works.",
+      text: "<b>Open</b> lists the threads still going, those that wait on you first; <b>Closed</b> the finished ones. A thread shows the agent's updates with a bar of its steps, its questions to answer, and a box to write in: what you write and answer reaches the thread's chat at once, also while it works.",
       action: next,
     },
     {
@@ -3019,6 +3019,28 @@ const WORKBENCH_PER_CHAT_TOUR: Tour = {
   ],
 };
 
+/** Workbench as a repository's issues: Open and Closed, with labels; the briefing on the dashboard. */
+const WORKBENCH_OPEN_CLOSED_TOUR: Tour = {
+  id: "workbench-open-closed-2026-11-27",
+  title: "Open and Closed threads",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Open and Closed",
+      text: "<b>Workbench</b> has two tabs, as a repository's issues: <b>Open</b>, with what waits on you first, and <b>Closed</b>. In progress and Waiting on you show as labels on a thread.",
+      action: next,
+    },
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "The briefing is on the dashboard",
+      text: "Each morning at 9:00 the <b>Briefing</b> on the dashboard sums up every chat's threads: what moved, what waits on you, what is in progress.",
+      action: next,
+    },
+  ],
+};
+
 /** Workbench's second step: questions asked while a chat works are asked in threads; the daily briefing. */
 const WORKBENCH_CUTOVER_TOUR: Tour = {
   id: "workbench-cutover-2026-11-27",
@@ -3035,7 +3057,7 @@ const WORKBENCH_CUTOVER_TOUR: Tour = {
     {
       target: SIDE_PANEL_RAIL,
       title: "A briefing each morning",
-      text: "At 9:00 the <b>Daily briefing</b> thread gets the day's entry: what moved, what waits on you, what is in progress; the main chat adds what is next.",
+      text: "At 9:00 the server writes the day's briefing on the dashboard: what moved, what waits on you and what is in progress, in every chat.",
       action: next,
     },
   ],
@@ -3933,6 +3955,13 @@ const OMP_19_1_1_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-27-workbench-open-closed",
+    when: "2026-11-27T15:45:00Z",
+    summary:
+      "Workbench's threads are in two tabs, Open and Closed, with In progress and Waiting on you as labels; the daily briefing is on the dashboard, over every chat, instead of a thread.",
+    tours: [WORKBENCH_OPEN_CLOSED_TOUR],
+  },
   {
     id: "2026-11-27-workbench-per-chat",
     when: "2026-11-27T03:25:00Z",

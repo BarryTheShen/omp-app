@@ -30,9 +30,9 @@ import {
   FILTERS,
   type Filter,
   filtered,
+  tabName,
   useWorkThread,
   useWorkThreadList,
-  waitsOnYou,
 } from "./threads";
 
 const failureText = (failure: unknown): string =>
@@ -79,8 +79,9 @@ type View =
 
 /**
  * A chat's Workbench (threads, one per piece of work, like a repository's issues): the threads of the chat you are in,
- * filtered (Needs you, In progress, Done, All), newest activity first, each with its kind, state, bar and what waits on
- * you; a thread's timeline, with its questions to answer and a box to write in; and New thread, which opens one for this
+ * in two tabs as a repository's issues have (Open, what waits on you first; Closed), each with its kind, its label (In
+ * progress, Waiting on you, Done), bar and what waits on you; a thread's timeline, with its questions to answer and a
+ * box to write in; and New thread, which opens one for this
  * chat. Another chat focused shows its own list.
  */
 export function WorkbenchPanel({
@@ -94,7 +95,7 @@ export function WorkbenchPanel({
 }): ReactNode {
   const { list, missing } = useWorkThreadList(client);
   const [view, setView] = useState<View>({ kind: "list" });
-  const [filter, setFilter] = useState<Filter>("Needs you");
+  const [filter, setFilter] = useState<Filter>("Open");
   // What stops this chat until you answer (omp's questions, a plan to approve): at the top of its Workbench.
   const plan = usePlan(chat);
   const omp = useOmpQuestions(chat);
@@ -137,8 +138,7 @@ export function WorkbenchPanel({
     );
   const threads = list.threads.filter((thread) => thread.owner === here);
   const shown = filtered(threads, filter);
-  const stopsShown = (filter === "Needs you" || filter === "All") && chat !== null;
-  const waiting = threads.filter(waitsOnYou).length + stops;
+  const stopsShown = filter === "Open" && chat !== null;
   return (
     <div data-tour="workbench-panel" className="flex h-full min-h-0 flex-col">
       <div
@@ -148,7 +148,7 @@ export function WorkbenchPanel({
       >
         {FILTERS.map((name) => (
           <TabButton key={name} selected={filter === name} onClick={() => setFilter(name)}>
-            {name === "Needs you" && waiting > 0 ? `Needs you (${waiting})` : name}
+            {tabName(name, threads)}
           </TabButton>
         ))}
       </div>
@@ -161,7 +161,7 @@ export function WorkbenchPanel({
       {stopsShown && <ChatStops controller={chat} />}
       {shown.length === 0 && (!stopsShown || stops === 0) ? (
         <p className="px-3 py-2 text-sm text-t3">
-          {filter === "Needs you" ? "Nothing waits on you." : "No threads here."}
+          {filter === "Open" ? "No open threads." : "No closed threads."}
         </p>
       ) : (
         <ul
@@ -257,10 +257,13 @@ export function ThreadRow({
       </span>
       <span className="flex items-center gap-2 text-xs text-t3">
         <span>{kindLabel(thread.kind)}</span>
-        <span>·</span>
-        <span className={thread.state === "waiting" ? "text-warn-ink" : undefined}>
-          {STATE_LABELS[thread.state]}
-        </span>
+        {thread.state === "open" ? null : (
+          <span
+            className={`rounded-full border px-1.5 ${thread.state === "waiting" ? "border-warn-ink text-warn-ink" : "border-l2"}`}
+          >
+            {STATE_LABELS[thread.state]}
+          </span>
+        )}
         {thread.progress !== null && (
           <span>
             · {thread.progress.done}/{thread.progress.total}

@@ -34,6 +34,7 @@ import { Switch } from "@/components/ui/switch";
 import type { ChatTarget } from "../chat/controller";
 import { follow } from "../follow";
 import { AccountsSection } from "../panels/usage/UsagePanel";
+import { DashboardBriefing } from "../panels/workbench/DashboardBriefing";
 import { DashboardWorkbench } from "../panels/workbench/DashboardWorkbench";
 import { useShareLink } from "../shares/link";
 import { useRunningChats } from "../sidebar/useRunningChats";
@@ -1074,6 +1075,12 @@ export function DashboardBody({
           </section>
           <div className="min-w-0 @5xl:col-span-2">
             <Part id="workbench">
+              <Section
+                title="Briefing"
+                hint="Each morning at 9:00: what moved since the day before, what waits on you and what is in progress, in every chat."
+              >
+                <DashboardBriefing client={client} />
+              </Section>
               <Section
                 title="Workbench"
                 hint="Every chat's threads, one per plan, feature, bug or question: pick one to read it, answer its questions and write in it."

@@ -13,26 +13,30 @@ import { follow } from "../../follow";
 export const waitsOnYou = (thread: WorkThreadSummary): boolean =>
   thread.unanswered > 0 || thread.state === "waiting";
 
-/** The list's filters, in their order. */
-export const FILTERS = ["Needs you", "In progress", "Done", "All"] as const;
+/** Whether a thread is open: open, in progress or waiting on you; done and closed ones are closed. */
+export const isOpen = (thread: WorkThreadSummary): boolean =>
+  thread.state !== "done" && thread.state !== "closed";
+
+/** The list's tabs, as a repository's issues have them. */
+export const FILTERS = ["Open", "Closed"] as const;
 export type Filter = (typeof FILTERS)[number];
 
-/** The threads a filter shows, in the list's order (newest activity first). */
+/**
+ * The threads a tab shows: open ones with those that wait on you first, then newest activity first; closed ones newest
+ * activity first.
+ */
 export function filtered(
   threads: readonly WorkThreadSummary[],
   filter: Filter,
 ): WorkThreadSummary[] {
-  switch (filter) {
-    case "Needs you":
-      return threads.filter(waitsOnYou);
-    case "In progress":
-      return threads.filter((thread) => thread.state === "open" || thread.state === "in_progress");
-    case "Done":
-      return threads.filter((thread) => thread.state === "done" || thread.state === "closed");
-    case "All":
-      return [...threads];
-  }
+  if (filter === "Closed") return threads.filter((thread) => !isOpen(thread));
+  const open = threads.filter(isOpen);
+  return [...open.filter(waitsOnYou), ...open.filter((thread) => !waitsOnYou(thread))];
 }
+
+/** A tab's name with its count: "Open 5", "Closed 3". */
+export const tabName = (filter: Filter, threads: readonly WorkThreadSummary[]): string =>
+  `${filter} ${filtered(threads, filter).length}`;
 
 /**
  * Workbench's list, kept current from the server's `changed`, and read again after an outage; null until first read.
