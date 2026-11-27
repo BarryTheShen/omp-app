@@ -2,83 +2,72 @@ import type { Page } from "@playwright/test";
 import { expect, realTest, startNewChat } from "./real-omp";
 
 /**
- * Every chat's questions on the dashboard (D7) on real omp: a chat's agent asks without waiting (`ask_async`); the
- * dashboard lists the asks under the chat's name, a card each, answered there as in the chat: an ask's answers wait for
- * the chat's other open ask and leave the open ones, the last ask sends both to the chat as the person's message, and
- * the chat leaves the list.
+ * What waits for you on the dashboard (D7) on real omp: a chat asks in a Workbench thread (`thread_ask`); the dashboard
+ * counts the thread and lists its open questions under "Threads waiting on you", answered there as in Workbench, and
+ * the answers reach the chat from the thread. omp's own question that stops a chat waits there too, under its name.
  */
 const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
 const transcript = (page: Page) => page.getByRole("region", { name: "Transcript" });
 const questions = (page: Page) =>
   page.locator('[data-tour="dashboard"]').getByRole("region", { name: "Questions", exact: true });
 
-const DATABASE = {
-  questions: [
-    {
-      id: "db",
-      header: "Database",
-      question: "Which database should the app use?",
-      options: [{ label: "Postgres" }, { label: "SQLite" }],
-    },
-  ],
-};
-const NAME = {
-  questions: [{ id: "name", header: "Name", question: "What should the service be called?" }],
-};
-
 realTest.describe("new UI: every chat's questions on the dashboard", () => {
   realTest.setTimeout(240_000);
 
   realTest(
-    "a chat's questions wait on the dashboard under its name; answered there, they go to the chat together and leave",
+    "a thread's questions wait on the dashboard; answered there, they reach the chat from the thread and leave",
     async ({ realApp }) => {
       const page = await realApp.open({ path: "/" });
       await startNewChat(page);
       await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
-      for (const [ask, said] of [
-        [DATABASE, "tool said: Asked 1 question (db)."],
-        [NAME, "tool said: Asked 1 question (name)."],
-      ] as const) {
-        await box(page).fill(`call_tool ask_async ${JSON.stringify(ask)}`);
-        await box(page).press("Enter");
-        await expect(transcript(page).getByText(said, { exact: false })).toBeVisible({
-          timeout: 90_000,
-        });
-      }
+      await box(page).fill(
+        'call_tool thread_open {"title":"Service setup","kind":"task","text":"Set up the service"}',
+      );
+      await box(page).press("Enter");
+      const opened = transcript(page).getByText(/tool said: Opened thread [a-z0-9]+/);
+      await expect(opened).toBeVisible({ timeout: 90_000 });
+      const id = /Opened thread ([a-z0-9]+)/.exec((await opened.textContent()) ?? "")?.[1] ?? "";
+      const ask = {
+        id,
+        questions: [
+          {
+            id: "db",
+            header: "Database",
+            question: "Which database should the app use?",
+            options: [{ label: "Postgres" }, { label: "SQLite" }],
+          },
+          { id: "name", header: "Name", question: "What should the service be called?" },
+        ],
+      };
+      await box(page).fill(`call_tool thread_ask ${JSON.stringify(ask)}`);
+      await box(page).press("Enter");
+      await expect(transcript(page).getByText(/tool said: Asked in thread/)).toBeVisible({
+        timeout: 90_000,
+      });
 
-      // The dashboard's button counts what waits there: both questions.
+      // The dashboard's button counts what waits there: the thread.
       const button = page.getByRole("button", { name: /^Dashboard(,|$)/ });
-      await expect(button).toHaveAccessibleName("Dashboard, 2 waiting for you", {
+      await expect(button).toHaveAccessibleName("Dashboard, 1 waiting for you", {
         timeout: 30_000,
       });
       await button.click();
       const list = questions(page);
-      const chat = list.getByRole("region", { name: /^Questions from / });
-      await expect(chat).toHaveCount(1, { timeout: 30_000 });
-      const database = chat.getByRole("article", { name: "Question: Database" });
-      await expect(database).toContainText("Which database should the app use?");
-
-      // The first ask's answer waits for the chat's other open ask, and leaves the open ones.
-      await database.getByRole("radio", { name: "Postgres" }).click();
-      await database.getByRole("button", { name: "Save answer" }).click();
-      await expect(chat.getByRole("article", { name: "Question: Database" })).toHaveCount(0, {
-        timeout: 30_000,
-      });
-      await expect(button).toHaveAccessibleName("Dashboard, 1 waiting for you");
-      await expect(chat.getByRole("article", { name: "Ready to send: Database" })).toContainText(
-        "Postgres",
-      );
-
-      // The last ask sends both, as the person's message; the chat leaves the list.
-      const name = chat.getByRole("article", { name: "Question: Name" });
-      await name.getByRole("textbox", { name: "Your answer" }).fill("atlas");
-      await name.getByRole("button", { name: "Send answers" }).click();
+      const thread = list
+        .getByRole("region", { name: "Threads waiting on you" })
+        .getByRole("region", { name: "Thread: Service setup" });
+      const card = thread.getByRole("region", { name: "Questions: Database, Name" });
+      await expect(card).toContainText("Which database should the app use?", { timeout: 30_000 });
+      await card.getByRole("radio", { name: "Postgres" }).click();
+      await card.getByRole("textbox", { name: "Your answer" }).fill("atlas");
+      await card.getByRole("button", { name: "Send answers" }).click();
       await expect(list).toContainText("No question waits for you.", { timeout: 60_000 });
       await expect(button).toHaveAccessibleName("Dashboard");
 
       await page.getByRole("tablist", { name: "Workspaces" }).getByRole("tab").first().click();
-      const answers = transcript(page).getByText("Answers to your questions", { exact: false });
-      await expect(answers).toBeVisible({ timeout: 60_000 });
+      await expect(transcript(page)).toContainText(
+        `Thread ${id} "Service setup": the person's answers to your questions:`,
+        { timeout: 60_000 },
+      );
       await expect(transcript(page)).toContainText("Postgres");
       await expect(transcript(page)).toContainText("atlas");
       expect(realApp.problems).toEqual([]);

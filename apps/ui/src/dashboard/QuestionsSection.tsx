@@ -4,16 +4,16 @@ import {
   type OpenQuestionsChat,
   OpenQuestionsList,
   QuestionsPort,
-  type ThreadId,
 } from "@omp-app/contracts";
-import { isOmpQuestion, type QuestionRecord } from "@omp-app/contracts/chat-host";
+import { isOmpQuestion } from "@omp-app/contracts/chat-host";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ChatTarget } from "../chat/controller";
 import { OmpQuestionCard } from "../chat/HostRequests";
 import { follow } from "../follow";
 import { lastSeen } from "../lastSeen";
-import { type QuestionAnswerer, WaitingQuestions } from "../panels/btw/QuestionCard";
+import { ThreadOpenAsks } from "../panels/workbench/ThreadOpenAsks";
+import { useWorkThreadList, waitsOnYou } from "../panels/workbench/threads";
 import { problemWords } from "./problems";
 
 const LATER = "Questions from every chat come with the next server update.";
@@ -60,37 +60,13 @@ function useOpenQuestions(client: AppClient): {
   return { chats, problem };
 }
 
-/**
- * A chat's questions answered from the dashboard, through the chat's own methods: the chat is opened for each call, as
- * a tab would open it, and let go after, so the answer takes the path and the checks it takes inside the chat.
- */
-function chatAnswerer(client: AppClient, threadId: ThreadId): QuestionAnswerer {
-  const session = client.port(ChatSessionPort);
-  const inChat = async (method: string, params: unknown): Promise<unknown> => {
-    await session.open({ threadId });
-    try {
-      return await session.request({ threadId, method, params });
-    } finally {
-      await session.close({ threadId }).catch(() => undefined);
-    }
-  };
-  return {
-    answerQuestion: async (id, answer) =>
-      ((await inChat("answer_question", { id, ...answer })) as { record: QuestionRecord }).record,
-    skipQuestion: async (id) =>
-      ((await inChat("skip_question", { id })) as { record: QuestionRecord }).record,
-    sendAnswers: async () =>
-      ((await inChat("send_answers", {})) as { records: readonly QuestionRecord[] }).records,
-  };
-}
-
 const folderName = (folder: string | null): string | null =>
   folder === null ? null : (folder.split("/").filter(Boolean).at(-1) ?? folder);
 
 /**
- * The questions that wait for you in every chat, each chat's under its name: omp's questions that stop the chat until
- * you answer, as above the chat's message box, and those its agent asked without waiting (`ask_async`), as in the chat's
- * own Questions panel. Answered here, a question leaves once its answer went to the chat; Open chat goes to it.
+ * What waits for you in every chat: omp's questions that stop a chat until you answer, each chat's under its name, as
+ * above the chat's message box; then Workbench's threads that wait on you, their open questions answered here as in
+ * Workbench. Answered here, a question leaves once its answer went to the chat; Open chat goes to it.
  */
 export function QuestionsSection({
   client,
@@ -101,14 +77,7 @@ export function QuestionsSection({
 }): ReactNode {
   const { chats, problem } = useOpenQuestions(client);
   const session = useMemo(() => client.port(ChatSessionPort), [client]);
-  const answerers = useMemo(() => new Map<ThreadId, QuestionAnswerer>(), []);
-  const answererOf = (threadId: ThreadId): QuestionAnswerer => {
-    const known = answerers.get(threadId);
-    if (known !== undefined) return known;
-    const made = chatAnswerer(client, threadId);
-    answerers.set(threadId, made);
-    return made;
-  };
+  const threads = (useWorkThreadList(client).list?.threads ?? []).filter(waitsOnYou);
   return (
     <div className="flex flex-col gap-4">
       {problem !== null && (
@@ -116,10 +85,10 @@ export function QuestionsSection({
           {problem}
         </p>
       )}
-      {chats !== null && chats.length === 0 && (
+      {chats !== null && chats.length === 0 && threads.length === 0 && (
         <p className="text-sm text-t3">
-          No question waits for you. When a chat's agent asks something it does not need at once, or
-          omp stops a chat to ask you, the question shows here and in that chat, and waits for you.
+          No question waits for you. When omp stops a chat to ask you, or a chat asks you in a
+          Workbench thread, the question shows here and waits for you.
         </p>
       )}
       {(chats ?? []).map((chat) => {
@@ -161,12 +130,23 @@ export function QuestionsSection({
                 }
               />
             ))}
-            {chat.records.length > 0 && (
-              <WaitingQuestions records={chat.records} controller={answererOf(chat.threadId)} />
-            )}
           </section>
         );
       })}
+      {threads.length > 0 && (
+        <section aria-label="Threads waiting on you" className="flex flex-col gap-2">
+          <h4 className="text-sm font-medium text-t1">Threads waiting on you</h4>
+          {threads.map((thread) =>
+            thread.unanswered > 0 ? (
+              <ThreadOpenAsks key={thread.id} client={client} id={thread.id} title={thread.title} />
+            ) : (
+              <p key={thread.id} className="text-xs text-t2">
+                {thread.title}: waiting on you{thread.last === null ? "" : ` (${thread.last.text})`}
+              </p>
+            ),
+          )}
+        </section>
+      )}
     </div>
   );
 }

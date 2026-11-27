@@ -6,12 +6,9 @@ import {
 import { useMemo, useSyncExternalStore } from "react";
 import type { ChatController } from "../chat/controller";
 import type { PlanProposal } from "../chat/store";
-import type { QuestionsSnapshot } from "./questions";
 
-const NO_QUESTIONS: QuestionsSnapshot = { records: null, open: 0, wanted: false };
 const NO_REQUESTS: readonly HostDialogRequest[] = [];
 const noSubscription = (): (() => void) => () => undefined;
-const noQuestions = (): QuestionsSnapshot => NO_QUESTIONS;
 const noPlan = (): null => null;
 const noRequests = (): readonly HostDialogRequest[] => NO_REQUESTS;
 
@@ -43,15 +40,8 @@ export function useOmpQuestions(chat: ChatController | null): readonly OmpQuesti
   return useMemo(() => requests.filter(isOmpQuestion), [requests]);
 }
 
-/**
- * How many things in the chat wait for an answer from you: the questions its agent asked without waiting, omp's
- * questions that stop it, and the plan to review.
- */
+/** How many things stop the chat until you answer: omp's questions, and the plan to review. */
 export function useWaiting(chat: ChatController | null): number {
-  const { open } = useSyncExternalStore(
-    chat?.questions.subscribe ?? noSubscription,
-    chat?.questions.getSnapshot ?? noQuestions,
-  );
   const omp = useOmpQuestions(chat).length;
-  return open + omp + (usePlan(chat) === null ? 0 : 1);
+  return omp + (usePlan(chat) === null ? 0 : 1);
 }

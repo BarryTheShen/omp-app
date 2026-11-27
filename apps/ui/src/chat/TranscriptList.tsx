@@ -34,7 +34,7 @@ import type { ActiveTool } from "../vendor/collab-web/lib/types";
 import type { ToolRenderHost } from "../vendor/collab-web/tool-render/types";
 import { FailureRow } from "./FailureRow";
 import { useGroupTools } from "./groupTools";
-import { answersNotice, MessageActions, userText } from "./MessageActions";
+import { MessageActions, userText } from "./MessageActions";
 import { buildRows, groupToolRuns, type TranscriptRow, toolResults, workingInGroup } from "./rows";
 import { NoticeRow, ShellBlock } from "./ShellBlock";
 import type { ChatSnapshot } from "./store";
@@ -1085,8 +1085,6 @@ export interface RowActions {
   readonly onReopen?: () => void;
   readonly onNewChat?: () => void;
   readonly onEdit: (entryId: string) => void;
-  /** Your answers from Questions: the chat goes back to just before them and they wait in the panel again. */
-  readonly onEditAnswers: (entryId: string, message: string) => void;
   readonly canEdit: boolean;
 }
 
@@ -1117,18 +1115,7 @@ function RowView({
           </MessageActions>
         );
       }
-      const answers = answersNotice(row.entry);
-      return answers === null ? (
-        message
-      ) : (
-        <MessageActions
-          text={answers.text}
-          editLabel="Edit your answers"
-          onEdit={editable ? () => actions.onEditAnswers(id, answers.message) : null}
-        >
-          {message}
-        </MessageActions>
-      );
+      return message;
     }
     case "failure":
       return (

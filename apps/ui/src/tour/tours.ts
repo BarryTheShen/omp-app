@@ -2982,6 +2982,28 @@ const WORKBENCH_TOUR: Tour = {
   ],
 };
 
+/** Workbench's second step: questions asked while a chat works are asked in threads; the daily briefing. */
+const WORKBENCH_CUTOVER_TOUR: Tour = {
+  id: "workbench-cutover-2026-11-27",
+  title: "Questions in Workbench",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Questions live in threads now",
+      text: 'A chat that asks you something while it keeps working asks in its <b>Workbench</b> thread, and your answers reach it from there. Questions waiting from before were moved into a thread per chat, "Questions from …". The <b>Questions</b> panel keeps what stops a chat (omp\'s own questions, a plan to approve) and your side questions.',
+      action: next,
+    },
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "A briefing each morning",
+      text: "At 9:00 the <b>Daily briefing</b> thread gets the day's entry: what moved, what waits on you, what is in progress; the main chat adds what is next.",
+      action: next,
+    },
+  ],
+};
+
 const ACCESS_PANEL = part("access-panel");
 
 /** #20: the computers agents may reach through the app, their switches, and what ran on them. */
@@ -3874,6 +3896,13 @@ const OMP_19_1_1_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-27-workbench-cutover",
+    when: "2026-11-27T01:10:00Z",
+    summary:
+      "Questions a chat asks while it works are asked in its Workbench thread (waiting ones moved there), the dashboard and lite view answer them too, and a daily briefing is written at 9:00.",
+    tours: [WORKBENCH_CUTOVER_TOUR],
+  },
   {
     id: "2026-11-27-workbench",
     when: "2026-11-27T00:50:00Z",

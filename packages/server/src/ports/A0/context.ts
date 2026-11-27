@@ -139,12 +139,4 @@ export interface A0PortContext {
       call: unknown,
     ) => Promise<import("@omp-app/contracts/chat-host").ToolCallAnswer>;
   };
-  /** Hears each chat's questions as they change (D7), for the dashboard's list of every chat's questions. */
-  readonly questions?: {
-    readonly record: (
-      threadId: ThreadId,
-      folder: FolderPath,
-      record: import("@omp-app/contracts/chat-host").QuestionRecord,
-    ) => void;
-  };
 }

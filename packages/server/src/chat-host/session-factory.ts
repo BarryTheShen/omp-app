@@ -130,7 +130,6 @@ import * as postmortem from "@oh-my-pi/pi-utils/postmortem";
 import { MESSAGES_NOTE, readAccessNote, withNote } from "./access-note";
 import { LiveSecrets } from "./live-secrets";
 import { NO_MODEL_HINT } from "./no-model";
-import { AskAsyncTool } from "./questions";
 import { SharedTodosTool } from "./shared-todos";
 import { WorkThreadTools } from "./work-threads";
 
@@ -140,8 +139,6 @@ export interface ChatSession {
   readonly setToolUIContext: CreateAgentSessionResult["setToolUIContext"];
   readonly mcpManager: MCPManager | undefined;
   readonly subagentEventBus: EventBus;
-  /** The app's `ask_async` tool in the session; the loop gives it the chat's questions. */
-  readonly askAsync: AskAsyncTool;
   /** The app's `shared_todos` tool; the loop gives it the host's line to the server. */
   readonly sharedTodos: SharedTodosTool;
   /** Workbench's `thread_*` tools; the loop gives them the host's line to the server. */
@@ -364,16 +361,15 @@ export async function createChatSession(
     );
   }
 
-  // The app's own tools, beside omp's: questions the agent asks without waiting (`questions.ts`), the to-do list it
-  // shares with the person and the other chats (`shared-todos.ts`), and Workbench's threads (`work-threads.ts`).
-  // Secrets saved while the chat runs reach it through `live-secrets.ts`'s hook.
-  const askAsync = new AskAsyncTool();
+  // The app's own tools, beside omp's: the to-do list it shares with the person and the other chats
+  // (`shared-todos.ts`), and Workbench's threads (`work-threads.ts`), where it asks the person too. Secrets saved while
+  // the chat runs reach it through `live-secrets.ts`'s hook.
   const sharedTodos = new SharedTodosTool();
   const workThreads = new WorkThreadTools();
   const liveSecrets = new LiveSecrets();
   const created = await createAgentSession({
     ...sessionOptions,
-    customTools: [askAsync.definition, sharedTodos.definition, ...workThreads.definitions],
+    customTools: [sharedTodos.definition, ...workThreads.definitions],
     extensions: [...(sessionOptions.extensions ?? []), liveSecrets.extension],
     eventBus,
     subagentEventBus,
@@ -438,7 +434,6 @@ export async function createChatSession(
     setToolUIContext: created.setToolUIContext,
     mcpManager: created.mcpManager,
     subagentEventBus,
-    askAsync,
     sharedTodos,
     workThreads,
   };

@@ -1,25 +1,27 @@
 import { Maximize2, Minimize2, Minus } from "lucide-react";
-import { type ReactNode, use, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, use, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ChatController } from "../chat/controller";
-import { WaitingQuestions } from "../panels/btw/QuestionCard";
-import { asksInPanelOrder } from "../questions/questions";
+import { ThreadOpenAsks } from "../panels/workbench/ThreadOpenAsks";
+import { useWorkThreadList } from "../panels/workbench/threads";
 import { LiteContext } from "./LiteContext";
 
 /** How the card shows: docked above the message box, folded to one line, or over the whole chat. */
 type Size = "docked" | "folded" | "full";
 
 /**
- * In the lite view, which has no Questions panel: the questions the chat's agent asked without waiting (`ask_async`)
- * show as omp's questions that stop the chat do, docked above the message box, answered there. The card folds to one
- * line, or opens over the whole chat; a question that arrives while it is folded unfolds it. Nothing in the full app.
+ * In the lite view, which has no side panel: the questions this chat's agent asked in its Workbench threads show as
+ * omp's questions that stop the chat do, docked above the message box, answered there. The card folds to one line, or
+ * opens over the whole chat; a question that arrives while it is folded unfolds it. Nothing in the full app.
  */
 export function LiteQuestions({ controller }: { readonly controller: ChatController }): ReactNode {
   const lite = use(LiteContext);
-  const { records, open } = useSyncExternalStore(
-    controller.questions.subscribe,
-    controller.questions.getSnapshot,
+  const { list } = useWorkThreadList(controller.client);
+  const mine = (list?.threads ?? []).filter(
+    (thread) =>
+      thread.owner !== null && thread.owner === controller.threadId && thread.unanswered > 0,
   );
+  const open = mine.reduce((count, thread) => count + thread.unanswered, 0);
   const [size, setSize] = useState<Size>("docked");
   const before = useRef(open);
   useEffect(() => {
@@ -27,15 +29,8 @@ export function LiteQuestions({ controller }: { readonly controller: ChatControl
     before.current = open;
   }, [open]);
 
-  if (lite === null || records === null) return null;
-  const asks = asksInPanelOrder(records);
-  if (asks.open.length === 0 && asks.waiting.length === 0) return null;
-  const counted =
-    open === 0
-      ? "Answers ready to send"
-      : open === 1
-        ? "1 question waits for you"
-        : `${open} questions wait for you`;
+  if (lite === null || open === 0) return null;
+  const counted = open === 1 ? "1 question waits for you" : `${open} questions wait for you`;
 
   if (size === "folded")
     return (
@@ -93,8 +88,15 @@ export function LiteQuestions({ controller }: { readonly controller: ChatControl
             {full ? <Minimize2 /> : <Maximize2 />}
           </Button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <WaitingQuestions records={records} controller={controller} />
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3">
+          {mine.map((thread) => (
+            <ThreadOpenAsks
+              key={thread.id}
+              client={controller.client}
+              id={thread.id}
+              title={thread.title}
+            />
+          ))}
         </div>
       </section>
     </div>

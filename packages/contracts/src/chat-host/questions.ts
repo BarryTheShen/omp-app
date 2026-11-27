@@ -1,14 +1,8 @@
 /**
- * Questions an agent asks without waiting (the chat host's `ask_async` tool): each is kept in the chat's session, shown
- * in the page's Questions panel, and answered there whenever the person has time. The answers to one ask wait until
- * each of its questions has one, then go back into the chat together as one message from the person; the person can
- * also send the answers ready so far at once.
+ * Questions an agent asked without waiting (the chat host's `ask_async` tool, before Workbench): a question with its
+ * choices and the person's answer. Workbench asks with `thread_ask` now; these shapes remain for the questions carried
+ * over into threads, the answer fields both share, and the `ask_async` calls old chats hold in their transcripts.
  */
-import { z } from "zod";
-
-/** The tool an agent asks with. */
-export const ASK_ASYNC_TOOL = "ask_async";
-
 /** One choice of a question, as omp's `ask` gives it. */
 export interface QuestionOption {
   readonly label: string;
@@ -58,34 +52,4 @@ export interface QuestionRecord {
   /** Epoch ms. */
   readonly askedAt: number;
   readonly answer: QuestionAnswer | null;
-}
-
-export const AnswerQuestionParams = z.object({
-  id: z.string().min(1),
-  /** Labels of the question's choices. */
-  picked: z.array(z.string().min(1)).max(100),
-  /** A written answer: Other…, or the answer to a question without choices. */
-  typed: z.string().max(20_000).optional(),
-  note: z.string().max(20_000).optional(),
-});
-export type AnswerQuestionParams = z.infer<typeof AnswerQuestionParams>;
-
-export const SkipQuestionParams = z.object({ id: z.string().min(1) });
-export type SkipQuestionParams = z.infer<typeof SkipQuestionParams>;
-
-/**
- * Takes sent answers back before omp reads them: `message`, the notice that carries them. `from: "queue"` (the default)
- * takes it out of omp's queue; `from: "chat"`, after the chat was rewound to just before it (Edit in the transcript), the
- * message is out of the chat already.
- */
-export const ReopenAnswersParams = z.object({
-  message: z.string().min(1).max(500_000),
-  from: z.enum(["queue", "chat"]).optional(),
-});
-export type ReopenAnswersParams = z.infer<typeof ReopenAnswersParams>;
-
-/** A question was asked, answered or skipped: its whole record. */
-export interface QuestionRecordEvent {
-  readonly type: "question_record";
-  readonly record: QuestionRecord;
 }

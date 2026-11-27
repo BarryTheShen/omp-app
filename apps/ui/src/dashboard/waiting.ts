@@ -8,6 +8,7 @@ import {
 import { isOmpQuestion } from "@omp-app/contracts/chat-host";
 import { useEffect, useState } from "react";
 import { follow } from "../follow";
+import { useWorkThreadList, waitsOnYou } from "../panels/workbench/threads";
 
 /** Today as `YYYY-MM-DD`, in this device's own time. */
 function today(now: Date = new Date()): string {
@@ -16,15 +17,9 @@ function today(now: Date = new Date()): string {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-/** How many questions wait for an answer, in every chat: its agent's open ones, and omp's that stop it. */
+/** How many of omp's questions stop a chat until you answer, in every chat. */
 export function openQuestionsIn(list: OpenQuestionsList): number {
-  return list.chats.reduce(
-    (count, chat) =>
-      count +
-      chat.records.filter((record) => record.answer === null).length +
-      chat.requests.filter(isOmpQuestion).length,
-    0,
-  );
+  return list.chats.reduce((count, chat) => count + chat.requests.filter(isOmpQuestion).length, 0);
 }
 
 /** How many to-dos not done are due today or before. */
@@ -36,12 +31,14 @@ export function dueIn(board: TodoBoard, on: string = today()): number {
 }
 
 /**
- * What waits for you on the dashboard (D7): every chat's open questions and the to-dos due today or before, kept current
- * from the server's events; read again each hour, so a day that turns counts the next day's. An older server has none.
+ * What waits for you on the dashboard (D7): omp's questions that stop a chat, Workbench's threads that wait on you, and
+ * the to-dos due today or before, kept current from the server's events; read again each hour, so a day that turns
+ * counts the next day's. An older server has none.
  */
 export function useDashboardWaiting(client: AppClient): number {
   const [questions, setQuestions] = useState(0);
   const [due, setDue] = useState(0);
+  const threads = useWorkThreadList(client).list?.threads.filter(waitsOnYou).length ?? 0;
   useEffect(() => {
     let active = true;
     const readQuestions = (): void => {
@@ -80,7 +77,7 @@ export function useDashboardWaiting(client: AppClient): number {
       clearInterval(hourly);
     };
   }, [client]);
-  return questions + due;
+  return questions + threads + due;
 }
 
 /** The dashboard button's name: what waits is said, as the Questions button says it. */

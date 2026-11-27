@@ -147,7 +147,7 @@ Events go through `EventReplayHub` (`packages/server/src/replay.ts`). Each strea
 
 **Capabilities.** The first line, `hello`, lists the methods this host answers, and a method it does not list gets `unknown_method`. At start the server runs a short-lived host in a temporary folder inside the app data folder (`packages/server/src/capabilities/index.ts`), reads its `hello`, and publishes `omp.cmd.<method>` as available for each listed method (`packages/contracts/src/core/capabilities.ts`). The rule is that a capability is `available` only when the running omp reports it or a probe with no side effects confirms it; a version number alone never turns a feature on. Capabilities that name features rather than methods (`omp.ui`, `omp.host-tools`, `omp.host-uris`, `omp.subagent-events`, `omp.live-voice`), and the app's own `host.*`, `client.*` and `upstream.*` keys, share the same map, which the server sends to every page in `welcome`.
 
-**Features.** `hello` also lists `features`, what a host can do beyond its methods; `CHAT_HOST_FEATURES` in `protocol.ts` holds the current list (`message_host`: extensions can read which app a message came from; `answers_together`: the answers to the agent's `ask_async` questions wait until every open question of the chat has one, then go as one message). A host built before a feature existed does not list it.
+**Features.** `hello` also lists `features`, what a host can do beyond its methods; `CHAT_HOST_FEATURES` in `protocol.ts` holds the current list (`message_host`: extensions can read which app a message came from; `work_threads`: the agent has Workbench's `thread_*` tools). A host built before a feature existed does not list it.
 
 ### Restarting older hosts
 

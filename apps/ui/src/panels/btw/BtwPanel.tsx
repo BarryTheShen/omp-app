@@ -163,9 +163,9 @@ function Turn({ turn, index }: { readonly turn: BtwTurn; readonly index: number 
 }
 
 /**
- * The Questions panel, beside the chat it belongs to (the focused pane's), in two tabs: the questions the chat's agent
- * asked without waiting (Questions for you), and the side questions asked with omp's `/btw` (its BTW history). It opens
- * on the questions when one waits; `/btw` brings the side questions forward.
+ * The Questions panel, beside the chat it belongs to (the focused pane's), in two tabs: what stops the chat until you
+ * answer (Questions for you: a plan to approve, omp's questions), and the side questions asked with omp's `/btw` (its
+ * BTW history). It opens on the questions when one waits; `/btw` brings the side questions forward.
  */
 export function BtwPanel({ chat }: { readonly chat: ChatController | null }): ReactNode {
   if (chat === null)
@@ -176,11 +176,7 @@ export function BtwPanel({ chat }: { readonly chat: ChatController | null }): Re
 type BtwTab = "questions" | "side";
 
 function BtwTabs({ controller }: { readonly controller: ChatController }): ReactNode {
-  const { records } = useSyncExternalStore(
-    controller.questions.subscribe,
-    controller.questions.getSnapshot,
-  );
-  // The open questions and a plan to review: the tab's count, and the tab the panel opens on.
+  // The plan to review and omp's questions: the tab's count, and the tab the panel opens on.
   const open = useWaiting(controller);
   // Read as a yes or no, so the pieces of a side answer do not redraw the tabs.
   const sideWanted = useSyncExternalStore(
@@ -188,49 +184,18 @@ function BtwTabs({ controller }: { readonly controller: ChatController }): React
     () => controller.btw.getSnapshot().wanted,
   );
   const [picked, setPicked] = useState<BtwTab | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
   // Another chat focused: its own tab is decided again (React's way of resetting state for a new prop).
   const [owner, setOwner] = useState(controller);
   if (owner !== controller) {
     setOwner(controller);
     setPicked(null);
-    setProblem(null);
   }
-
-  // The questions are read each time the panel shows, as the side questions are.
-  useEffect(() => {
-    let alive = true;
-    controller
-      .loadQuestions()
-      .catch((failure: unknown) => alive && setProblem(failureText(failure)));
-    return () => {
-      alive = false;
-    };
-  }, [controller]);
-
-  // Once the questions are known, the panel stays on the tab it opened on until the person picks one.
-  const known = records !== null;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: decided once a chat's questions are first known
-  useEffect(() => {
-    if (known && picked === null) setPicked(open > 0 ? "questions" : "side");
-  }, [known, picked]);
   // `/btw` (a side question asked, or the history opened) brings the side questions forward, also while questions wait.
-  // After the effect above, so it wins when both run at once.
   useEffect(() => {
     if (!sideWanted) return;
     setPicked("side");
     controller.btw.revealed();
   }, [sideWanted, controller]);
-  // Answers taken back to change (`reopenAnswers`) bring the questions forward.
-  const questionsWanted = useSyncExternalStore(
-    controller.questions.subscribe,
-    () => controller.questions.getSnapshot().wanted,
-  );
-  useEffect(() => {
-    if (!questionsWanted) return;
-    setPicked("questions");
-    controller.questions.revealed();
-  }, [questionsWanted, controller]);
   const tab: BtwTab = picked ?? (open > 0 ? "questions" : "side");
 
   return (
@@ -256,11 +221,7 @@ function BtwTabs({ controller }: { readonly controller: ChatController }): React
         </TabButton>
       </div>
       {tab === "questions" ? (
-        problem !== null && records === null ? (
-          <p className="px-4 py-3 text-[0.8125rem] text-t3">{problem}</p>
-        ) : (
-          <QuestionsTab controller={controller} />
-        )
+        <QuestionsTab controller={controller} />
       ) : (
         <BtwHistory controller={controller} />
       )}

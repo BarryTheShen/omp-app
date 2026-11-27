@@ -240,7 +240,7 @@ export function createWorkThreadsRuntime(context: WorkThreadsContext): {
         );
         const state = store.askOf(summary.id, ask);
         const complete =
-          state !== null && state.questions.every((question) => state.answers.has(question.id));
+          state?.questions.every((question) => state.answers.has(question.id)) === true;
         return complete ? sendReady(summary, ask) : summary;
       }),
     sendAnswers: (args: unknown): Promise<WorkThreadSummary> =>

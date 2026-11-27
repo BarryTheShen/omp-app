@@ -1,6 +1,8 @@
 import type { AppClient } from "@omp-app/client";
 import {
+  ChatSessionPort,
   type FolderPath,
+  type OpenQuestionsChat,
   type ThreadId,
   type WorkThreadAnswer,
   type WorkThreadEntry,
@@ -12,7 +14,7 @@ import {
   type WorkThreadSummary,
   WorkThreadsPort,
 } from "@omp-app/contracts";
-import type { QuestionRecord } from "@omp-app/contracts/chat-host";
+import { isOmpQuestion, type QuestionRecord } from "@omp-app/contracts/chat-host";
 import { ArrowLeft, Plus } from "lucide-react";
 import { type KeyboardEvent, type ReactNode, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -20,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import type { ChatController, ChatTarget } from "../../chat/controller";
+import { OmpQuestionCard } from "../../chat/HostRequests";
 import { isImeEnter } from "../../keys/ime";
 import { Markdown } from "../../vendor/collab-web/components/transcript/Markdown";
 import { TabButton } from "../btw/BtwPanel";
@@ -28,6 +31,7 @@ import {
   FILTERS,
   type Filter,
   filtered,
+  useStoppedChats,
   useWorkThread,
   useWorkThreadList,
   waitsOnYou,
@@ -94,6 +98,8 @@ export function WorkbenchPanel({
   const { list, missing } = useWorkThreadList(client);
   const [view, setView] = useState<View>({ kind: "list" });
   const [filter, setFilter] = useState<Filter>("Needs you");
+  // Chats omp stopped to ask you: under Needs you, and in the threads they own.
+  const stopped = useStoppedChats(client);
   if (missing)
     return <p className="px-3 py-2 text-sm text-t3">This server has no Workbench yet.</p>;
   if (list === null) return <p className="px-3 py-2 text-sm text-t3">Reading the threads…</p>;
@@ -103,6 +109,7 @@ export function WorkbenchPanel({
         client={client}
         id={view.id}
         chat={chat}
+        stopped={stopped}
         openChat={openChat}
         onBack={() => setView({ kind: "list" })}
       />
@@ -119,7 +126,8 @@ export function WorkbenchPanel({
       />
     );
   const shown = filtered(list.threads, filter);
-  const waiting = list.threads.filter(waitsOnYou).length;
+  const stoppedShown = filter === "Needs you" || filter === "All" ? stopped : [];
+  const waiting = list.threads.filter(waitsOnYou).length + stopped.length;
   return (
     <div data-tour="workbench-panel" className="flex h-full min-h-0 flex-col">
       <div
@@ -140,7 +148,10 @@ export function WorkbenchPanel({
         </Button>
         <MainChat client={client} chat={chat} mainChat={list.mainChat} />
       </div>
-      {shown.length === 0 ? (
+      {stoppedShown.map((stoppedChat) => (
+        <StoppedChat key={stoppedChat.threadId} client={client} chat={stoppedChat} />
+      ))}
+      {shown.length === 0 && stoppedShown.length === 0 ? (
         <p className="px-3 py-2 text-sm text-t3">
           {filter === "Needs you" ? "Nothing waits on you." : "No threads here."}
         </p>
@@ -160,6 +171,31 @@ export function WorkbenchPanel({
         </ul>
       )}
     </div>
+  );
+}
+
+/** A chat omp stopped to ask you something: its questions, answered here as above the chat's message box. */
+function StoppedChat({
+  client,
+  chat,
+}: {
+  readonly client: AppClient;
+  readonly chat: OpenQuestionsChat;
+}): ReactNode {
+  const name = chat.title ?? "A new chat";
+  return (
+    <section aria-label={`${name} waits for you`} className="flex flex-col gap-1.5 px-2 pb-2">
+      <h3 className="px-1 text-xs font-medium text-warn-ink">{name} waits for you</h3>
+      {chat.requests.filter(isOmpQuestion).map((request) => (
+        <OmpQuestionCard
+          key={request.id}
+          request={request}
+          answerWith={(answer) =>
+            client.port(ChatSessionPort).answer({ threadId: chat.threadId, id: request.id, answer })
+          }
+        />
+      ))}
+    </section>
   );
 }
 
@@ -327,7 +363,7 @@ const recordOf = (ask: string, question: WorkThreadQuestion, askedAt: number): Q
 });
 
 /** Each ask's latest answers and the questions already sent, read from the timeline. */
-function asksIn(
+export function asksIn(
   entries: readonly WorkThreadEntry[],
 ): Map<string, { answers: Map<string, WorkThreadAnswer>; sent: Set<string> }> {
   const asks = new Map<string, { answers: Map<string, WorkThreadAnswer>; sent: Set<string> }>();
@@ -345,12 +381,15 @@ function ThreadView({
   client,
   id,
   chat,
+  stopped,
   openChat,
   onBack,
 }: {
   readonly client: AppClient;
   readonly id: WorkThreadId;
   readonly chat: ChatController | null;
+  /** Chats omp stopped to ask you: the one that owns this thread shows its questions here. */
+  readonly stopped: readonly OpenQuestionsChat[];
   readonly openChat?: (target: ChatTarget) => void;
   readonly onBack: () => void;
 }): ReactNode {
@@ -479,6 +518,14 @@ function ThreadView({
           </ul>
         )}
       </header>
+      {(() => {
+        const owner = stopped.find((one) => one.threadId === summary.owner);
+        return owner === undefined ? null : (
+          <div className="shrink-0 border-b border-l2 pt-2">
+            <StoppedChat client={client} chat={owner} />
+          </div>
+        );
+      })()}
       <ol
         aria-label="Timeline"
         className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 py-2"
@@ -587,7 +634,7 @@ function EntryBody({
 }
 
 /** A thread's ask: its questions to answer, with Send; once every one went to the chat, the answers folded. */
-function AskCard({
+export function AskCard({
   client,
   thread,
   entry,

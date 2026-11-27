@@ -14,7 +14,6 @@ import { KEYS } from "../keys/table";
 import { LiteQuestions } from "../lite/LiteQuestions";
 import { ModelHub } from "../models/ModelHub";
 import { PageShare } from "../panels/files/PageShare";
-import { showPanel } from "../panels/panel-state";
 import { PlanCard } from "../plan/PlanCard";
 import { matchesHotkey } from "../tour/keys";
 import { FoldContext, type Folds, NO_FOLDS } from "../vendor/collab-web/lib/fold";
@@ -152,29 +151,6 @@ export function ChatPane({
           .catch((failure: unknown) =>
             controller.store.toast(
               `Could not edit that message: ${failure instanceof Error ? failure.message : String(failure)}`,
-              "error",
-            ),
-          )
-          .finally(() => {
-            editingNow.current = false;
-            setEditing(false);
-          });
-      },
-      // Your answers: the chat goes back to just before them, as Edit does for a message, and they wait in the
-      // Questions panel again, changeable, instead of coming into the box.
-      onEditAnswers: (entryId, message) => {
-        if (editingNow.current) return;
-        editingNow.current = true;
-        setEditing(true);
-        controller
-          .rewind(entryId)
-          .then((back) => (back === null ? null : controller.reopenAnswers(message, "chat")))
-          .then((reopened) => {
-            if (reopened !== null) showPanel("btw");
-          })
-          .catch((failure: unknown) =>
-            controller.store.toast(
-              `Could not edit your answers: ${failure instanceof Error ? failure.message : String(failure)}`,
               "error",
             ),
           )

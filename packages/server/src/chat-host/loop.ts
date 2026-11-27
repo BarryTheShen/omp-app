@@ -118,7 +118,6 @@ import {
   type PromptTicket,
   startPrompt,
 } from "./prompt-results";
-import { QuestionsController } from "./questions";
 import { readSearchEngines, removeSearchKey, setSearchKey, testSearch } from "./search-engines";
 import type { ChatSession } from "./session-factory";
 import { SettleWatcher } from "./settle";
@@ -254,12 +253,6 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   // session's BTW history, where omp's terminal reads them too; its answers and records go out as chat events, and a
   // history that cannot be saved as omp's `notice`.
   const btw = new BtwController(session, emit, log);
-  // Questions the agent asks without waiting (`questions.ts`, the `ask_async` tool): saved in the session, shown in the
-  // page's Questions panel, and answered from there into the chat (`sendAnswer`).
-  const questions = new QuestionsController(session, emit, (message, sequence) =>
-    sendAnswer(message, sequence),
-  );
-  chat.askAsync.attach(questions);
   /** Prompts being admitted and answers outside the command order: drained before the chat ends. */
   const background = new Set<Promise<unknown>>();
   const track = (task: Promise<unknown>): void => {
@@ -590,21 +583,6 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
     btw: async ({ question, recordId }) => ({ record: await btw.ask(question, recordId) }),
     btw_cancel: async ({ recordId }) => ({ cancelled: btw.cancel(recordId) }),
     get_btw_history: async () => ({ records: await btw.history() }),
-    get_questions: async () => ({ questions: questions.list() }),
-    answer_question: async (params, sequence) => ({
-      record: await questions.answer(params, sequence),
-    }),
-    skip_question: async ({ id }, sequence) => ({ record: await questions.skip(id, sequence) }),
-    send_answers: async (_params, sequence) => ({ records: await questions.sendWaiting(sequence) }),
-    // The answers went in as a steer (`sendAnswer`): taken back from omp's steering queue while it has not read them,
-    // or, after Edit rewound the chat to just before them, out of the chat already.
-    reopen_answers: async ({ message, from }) => ({
-      records: await questions.reopen(
-        message,
-        () => from === "chat" || session.takeQueuedMessage(message, "steering") !== undefined,
-        from === "chat",
-      ),
-    }),
     get_model_hub: async () => readModelHub(session),
     get_model_menu: async () => readModelMenu(session),
     assign_model_role: (params) => assignModelRole(session, params),
@@ -1053,42 +1031,6 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
         return {};
       }),
     );
-  };
-
-  /**
-   * The person's answers to questions (`questions.ts`), sent together as their message the way a typed one goes:
-   * through the input gate and the extensions' input hooks, then between the agent's steps while it works (a steer),
-   * else as a new message that starts its turn. Resolves once omp took it; a turn that fails later is only logged.
-   */
-  const sendAnswer = (text: string, sequence: number): Promise<void> => {
-    const isCurrent = stillCurrent(sequence);
-    return gate.enqueue(async () => {
-      const message = await readMessage({ text }, isCurrent);
-      if (message.kind !== "message") {
-        // An extension's input hook took it (`local`): delivered as far as the person is concerned.
-        if (message.kind === "local") return;
-        throw new Error("The chat changed before the answer was sent; send it again");
-      }
-      if (session.isStreaming) {
-        await session.steer(message.text, message.images);
-        return;
-      }
-      const admitted = Promise.withResolvers<void>();
-      session
-        .prompt(message.text, {
-          images: message.images,
-          streamingBehavior: "steer",
-          onPromptAdmitted: () => admitted.resolve(),
-        })
-        .then(
-          () => admitted.resolve(),
-          (error: unknown) => {
-            admitted.reject(error instanceof Error ? error : new Error(String(error)));
-            log(`chat host: the turn of an answer ended with an error: ${errorMessage(error)}`);
-          },
-        );
-      await admitted.promise;
-    });
   };
 
   const runPrompt = async (id: string, params: PromptParams, sequence: number): Promise<void> => {

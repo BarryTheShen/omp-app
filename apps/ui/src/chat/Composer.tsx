@@ -711,14 +711,6 @@ export const Composer = memo(function Composer({
       .catch((failure: unknown) => setError(`Could not take it back: ${errorText(failure)}`));
   };
 
-  /** Your answers from the Questions panel, taken back while omp has not read them, wait in the panel to be changed. */
-  const reopenAnswers = (message: string): void => {
-    controller
-      .reopenAnswers(message)
-      .then(() => showPanel("btw"))
-      .catch((failure: unknown) => setError(`Could not take them back: ${errorText(failure)}`));
-  };
-
   // A message whose turn never started because Stop came first comes back to the box, as Stop's queue does.
   const sendDroppedRef = useRef<(sent: SentMessage) => void>(() => undefined);
   sendDroppedRef.current = (sent) => restoreMessages([sent]);
@@ -1170,7 +1162,7 @@ export const Composer = memo(function Composer({
           !phone && <WorkingRowSpace />
         )}
         {roleTrack !== null && <RoleTrack track={roleTrack} onDone={onRoleTrackDone} />}
-        <QueuedMessages queue={queue} onTakeBack={takeBack} onReopenAnswers={reopenAnswers} />
+        <QueuedMessages queue={queue} onTakeBack={takeBack} />
         {hasPills && !phone && (
           <div className="flex min-w-0 items-center gap-1.5 px-1 pb-2">{pills}</div>
         )}

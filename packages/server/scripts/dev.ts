@@ -134,12 +134,14 @@ import {
 } from "../src/process";
 import { createPushRegistration, PushService } from "../src/push/service";
 import { watchForPush } from "../src/push/triggers";
-import { OpenQuestions, SCAN_DAYS, scanSessionQuestions } from "../src/questions/open-questions";
+import { readWaitingQuestions } from "../src/questions/open-questions";
 import { createPortRegistry, type PortRegistry } from "../src/registry/ports";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
 import { EventReplayHub } from "../src/replay";
 import { type AppServer, createAppServer } from "../src/server";
 import { answerThreadCall } from "../src/threads/agent";
+import { startBriefings } from "../src/threads/briefing";
+import { carryOverQuestions } from "../src/threads/carry-over";
 import { WorkThreadStore } from "../src/threads/store";
 import { answerAgentCall } from "../src/todos/agent";
 import { SiyuanMirror } from "../src/todos/siyuan-mirror";
@@ -512,8 +514,6 @@ export async function createCompositionServer(
   const todoStore = await TodoStore.open(appDataDir, {
     onUnreadable: (movedTo, reason) => logger.warn("todos.unreadable", { movedTo, reason }),
   });
-  // Every chat's questions that wait for you, for the dashboard (D7), kept in the app's data folder.
-  const openQuestions = await OpenQuestions.open(appDataDir);
   // Workbench's threads (one per piece of work), kept in the app's data folder.
   const workThreadStore = await WorkThreadStore.open(appDataDir);
   /** A chat's name as the chat list shows it, for the changes its agent makes to the to-do list. */
@@ -551,9 +551,6 @@ export async function createCompositionServer(
     threads: {
       agentCall: async (chat, call) =>
         answerThreadCall(workThreadStore, { ...chat, title: await chatTitle(chat.threadId) }, call),
-    },
-    questions: {
-      record: (threadId, folder, record) => openQuestions.record(threadId, folder, record),
     },
     leaseProbe:
       options.leaseProbe ??
@@ -638,19 +635,17 @@ export async function createCompositionServer(
     leaseProbe: sessionLeaseProbe({ ownersDir: () => ompSessionOwnersDir(env, homeDir) }),
     views: a0Runtime.views,
   });
-  // The questions asked before the list was kept, read once, in the background.
-  void openQuestions
-    .scanOnce(() =>
-      scanSessionQuestions(
-        async () => (await sessionFileStore.listBucketFolders()).map((folder) => folder.sessionDir),
-        Date.now() - SCAN_DAYS * 86_400_000,
-      ),
-    )
-    .catch((error: unknown) =>
-      logger.warn("questions.scan_failed", {
-        error: error instanceof Error ? error.message : String(error),
-      }),
-    );
+  // The questions chats asked with ask_async before Workbench, carried into threads once, in the background.
+  void (async () => {
+    const old = await readWaitingQuestions(appDataDir);
+    if (old === null) return;
+    const made = await carryOverQuestions(workThreadStore, old.chats, chatTitle, old.file);
+    logger.info("threads.questions_carried_over", { threads: made });
+  })().catch((error: unknown) =>
+    logger.warn("threads.carry_over_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    }),
+  );
   const resolveSession = async (threadId: ThreadId): Promise<CommandSession> => {
     const session = a0Runtime.commandSessionFor(threadId);
     if (session === undefined) {
@@ -976,10 +971,23 @@ export async function createCompositionServer(
       return target.kind === "chat" ? target.threadId : null;
     },
   });
-  // Every chat's questions that wait (those asked without waiting, and omp's that stop a chat), for the dashboard, and
-  // `changed` to every device.
+  // Workbench's daily briefing at 09:00, the server's time: written into its thread, then the main chat is asked, once
+  // it is free, to add what is next.
+  const stopBriefings = startBriefings({
+    store: workThreadStore,
+    askMainChat: async (threadId, text) => {
+      await taskQueue.add({
+        text: withAppNotice("thread", text),
+        target: { kind: "chat", threadId },
+        label: "Daily briefing",
+        when: { kind: "free" },
+      });
+    },
+    onProblem: (problem) => logger.warn("threads.briefing_failed", { problem }),
+  });
+  // omp's questions that stop a chat until you answer, in every chat, for the dashboard and Workbench, and `changed`
+  // to every device.
   const questions = createQuestionsRuntime({
-    questions: openQuestions,
     waiting: a0Runtime.waiting,
     titleOf: chatTitle,
     publish,
@@ -1229,13 +1237,13 @@ export async function createCompositionServer(
           usageLimitStore.dispose();
           runningChats.stop();
           todos.stop();
+          stopBriefings();
           workThreads.stop();
           await workThreadStore.settled();
           siyuanCopy.stop();
           chatIndex.stop();
           speechRecordings.stop();
           questions.stop();
-          await openQuestions.settled();
           await browserRuntime.stop();
         }
       }

@@ -37,13 +37,6 @@ import { type JobDetail, JobIdParams, type JobList, JobsParams } from "./jobs";
 import { type LiveEvent, LiveMuteParams, LiveStartParams } from "./live";
 import { CHAT_HOST_METHOD_NAMES, type ChatHostMethodName } from "./method-names";
 import {
-  AnswerQuestionParams,
-  type QuestionRecord,
-  type QuestionRecordEvent,
-  ReopenAnswersParams,
-  SkipQuestionParams,
-} from "./questions";
-import {
   SteerSubagentParams,
   type SubagentEvent,
   SubagentIdParams,
@@ -76,10 +69,8 @@ export const CHAT_HOST_PROTOCOL_VERSION = 1;
  * What a host can do beyond its methods, for a server that adopts it (D2): a host that lacks one of this build's is an
  * older build, restarted on this one once its chat is idle (`restartsWhenSettled`). `message_host`: the extensions'
  * `input` hooks read which app a message was sent from (`ctx.ui.messageHost`), and a widget may belong to one app's
- * lite view (`setWidget(key, lines, { host })`). `answers_together`: the answers to `ask_async` questions wait until
- * every open question of the chat has one, whichever ask it came from, then go together. `shared_todos`: the chat's
- * agent has the `shared_todos` tool, the to-do list it shares with the person and the other chats (`app.todos`).
- * `silent_skips`: a skipped `ask_async` question gets no answer, and skips alone send the agent nothing. `secrets_live`:
+ * lite view (`setWidget(key, lines, { host })`). `shared_todos`: the chat's agent has the `shared_todos` tool, the to-do
+ * list it shares with the person and the other chats (`app.todos`). `secrets_live`:
  * a secret saved while the chat runs (`secrets.yml`) is hidden from its AI at once, and its tool calls get its value.
  * `secrets_every_message`: every saved secret is hidden in every message the AI is sent, the agent's own notes too (a
  * finished background job's, a summary), which omp's own hiding passes over. `secrets_removed`: a tool call that would
@@ -92,9 +83,7 @@ export const CHAT_HOST_PROTOCOL_VERSION = 1;
  */
 export const CHAT_HOST_FEATURES = [
   "message_host",
-  "answers_together",
   "shared_todos",
-  "silent_skips",
   "secrets_live",
   "secrets_every_message",
   "secrets_removed",
@@ -992,39 +981,6 @@ export interface ChatHostMethodMap {
     readonly params: EmptyParams;
     readonly result: { readonly records: readonly BtwHistoryRecord[] };
   };
-  /** The questions the chat's agent asked with `ask_async`, open and answered, in the order asked. */
-  readonly get_questions: {
-    readonly params: EmptyParams;
-    readonly result: { readonly questions: readonly QuestionRecord[] };
-  };
-  /**
-   * Answers one of them. The answer is saved and waits, changeable, until every question of its ask has an answer or a
-   * skip; then the ask's waiting answers go to the agent together as one message from the person, the way a typed one
-   * does (between its steps while it works, else as a new message). The record comes back as it is then: still held,
-   * or sent. An answer that went to the agent cannot be changed.
-   */
-  readonly answer_question: {
-    readonly params: AnswerQuestionParams;
-    readonly result: { readonly record: QuestionRecord };
-  };
-  /** Skips one: it waits like an answer and settles with the answers, and nothing goes to the agent for it. */
-  readonly skip_question: {
-    readonly params: SkipQuestionParams;
-    readonly result: { readonly record: QuestionRecord };
-  };
-  /** Sends every answer that waits now, together as one message, also from asks not fully answered: the records sent. */
-  readonly send_answers: {
-    readonly params: EmptyParams;
-    readonly result: { readonly records: readonly QuestionRecord[] };
-  };
-  /**
-   * Takes sent answers back while omp has not read them yet (the queued notice `message` leaves omp's queue): they wait
-   * again, changeable, in the Questions panel. Refused once omp has read them. The records taken back.
-   */
-  readonly reopen_answers: {
-    readonly params: ReopenAnswersParams;
-    readonly result: { readonly records: readonly QuestionRecord[] };
-  };
   /**
    * The roles Ctrl+P walks: omp's `cycleOrder` setting, the roles of it that resolve to an available model (omp skips the
    * others, and `default` falls back to the live model), and the one the live model is (null when none is).
@@ -1464,11 +1420,6 @@ const PARAMS: { readonly [M in ChatHostMethod]: z.ZodType<ChatHostMethodMap[M]["
   btw: BtwParams,
   btw_cancel: BtwCancelParams,
   get_btw_history: EmptyParams,
-  get_questions: EmptyParams,
-  answer_question: AnswerQuestionParams,
-  skip_question: SkipQuestionParams,
-  send_answers: EmptyParams,
-  reopen_answers: ReopenAnswersParams,
   get_model_hub: EmptyParams,
   get_model_menu: EmptyParams,
   assign_model_role: AssignModelRoleParams,
@@ -1690,7 +1641,6 @@ export type ChatEvent =
   | LiveEvent
   | BtwDeltaEvent
   | BtwRecordEvent
-  | QuestionRecordEvent
   | PauseChangedEvent
   | PlanModeChangedEvent
   | LeafChangedEvent;

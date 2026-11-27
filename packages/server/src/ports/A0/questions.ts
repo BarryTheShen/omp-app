@@ -1,17 +1,14 @@
 import {
-  type OpenQuestionsChat,
   type OpenQuestionsList,
   QuestionsPort,
   type StreamKey,
   streamKey,
   type ThreadId,
 } from "@omp-app/contracts";
-import type { OpenQuestions } from "../../questions/open-questions";
 import type { PortRegistration } from "../../registry/ports";
 import type { WaitingAsks } from "./chat-session";
 
 export interface QuestionsContext {
-  readonly questions: OpenQuestions;
   /** omp's questions that stop each chat until you answer, and each change (the chat sessions' `waiting`). */
   readonly waiting: {
     asks(): readonly WaitingAsks[];
@@ -28,8 +25,8 @@ export interface QuestionsContext {
 const COALESCE_MS = 150;
 
 /**
- * The questions that wait for you in every chat (D7): those its agent asked without waiting and omp's questions that
- * stop a chat until you answer, each chat's together, the chat asked most recently first; and `changed` to every device.
+ * omp's questions that stop a chat until you answer, in every chat (D7): each chat's together, the chat asked most
+ * recently first; and `changed` to every device.
  */
 export function createQuestionsRuntime(context: QuestionsContext): {
   readonly registration: PortRegistration;
@@ -45,47 +42,20 @@ export function createQuestionsRuntime(context: QuestionsContext): {
       context.publish(changed, { at: now() });
     }, COALESCE_MS);
   };
-  const stopQuestions = context.questions.subscribe(schedule);
   const stopWaiting = context.waiting.onWaitingChange(schedule);
   const handlers = {
     list: async (): Promise<OpenQuestionsList> => {
-      const chats = new Map<ThreadId, { latest: number; chat: Omit<OpenQuestionsChat, "title"> }>();
-      for (const chat of context.questions.list()) {
-        chats.set(chat.threadId, {
-          latest: Math.max(...chat.records.map((record) => record.askedAt)),
-          chat: {
-            threadId: chat.threadId,
-            folder: chat.folder,
-            records: [...chat.records],
-            requests: [],
-          },
-        });
-      }
-      for (const asks of context.waiting.asks()) {
-        const known = chats.get(asks.threadId);
-        chats.set(asks.threadId, {
-          latest: Math.max(known?.latest ?? 0, asks.at),
-          chat: {
-            threadId: asks.threadId,
-            folder: known?.chat.folder ?? asks.folder,
-            records: known?.chat.records ?? [],
-            requests: [...asks.requests],
-          },
-        });
-      }
-      const ordered = [...chats.values()].sort((left, right) => right.latest - left.latest);
+      const ordered = [...context.waiting.asks()].sort((left, right) => right.at - left.at);
       return {
         chats: await Promise.all(
-          ordered.map(async ({ chat }) => ({
-            ...chat,
-            title: await context.titleOf(chat.threadId).catch(() => null),
+          ordered.map(async (asks) => ({
+            threadId: asks.threadId,
+            folder: asks.folder,
+            title: await context.titleOf(asks.threadId).catch(() => null),
+            requests: [...asks.requests],
           })),
         ),
       };
-    },
-    dismiss: (args: unknown): null => {
-      context.questions.dismiss((args as { threadId: ThreadId }).threadId);
-      return null;
     },
   };
   return {
@@ -93,7 +63,6 @@ export function createQuestionsRuntime(context: QuestionsContext): {
     stop() {
       clearTimeout(timer);
       timer = undefined;
-      stopQuestions();
       stopWaiting();
     },
   };

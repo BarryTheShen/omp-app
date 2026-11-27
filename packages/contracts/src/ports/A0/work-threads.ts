@@ -82,7 +82,7 @@ export const WorkThreadLink = z.discriminatedUnion("kind", [
 ]);
 export type WorkThreadLink = z.infer<typeof WorkThreadLink>;
 
-/** One question of an ask, as `ask_async` takes it today. */
+/** One question of an ask, as `thread_ask` takes it. */
 export const WorkThreadQuestion = z.strictObject({
   /** The agent's id for it, unique in its ask. */
   id: z.string().trim().min(1).max(64),

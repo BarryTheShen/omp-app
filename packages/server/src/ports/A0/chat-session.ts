@@ -2036,10 +2036,6 @@ export class ChatSessionPortRuntime {
           error: error instanceof Error ? error.message : String(error),
         }),
       );
-    } else if (event.type === "question_record") {
-      // Every chat's questions, for the dashboard: asked, answered and held, or sent.
-      const { threadId, folderPath } = entry.bootstrap;
-      this.#context.questions?.record(threadId, folderPath, event.record);
     }
   }
 

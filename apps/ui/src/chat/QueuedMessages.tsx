@@ -7,19 +7,15 @@ import type { ChatQueue } from "./store";
 /**
  * Messages waiting in omp's queues, one pill each: a steer goes in after the running step, a follow-up after the turn.
  * A message's pictures show beside its words, small, named as in the transcript ("Image 1"). Edit takes one back into
- * the message box, pictures included. A notice (`splitAppNotice`: something other than you sent it) shows as one and
- * has no Edit: it is not yours to take into the box. Your answers from the Questions panel are yours: their Edit takes
- * them back to the panel, to change them there.
+ * the message box, pictures included. A notice (`splitAppNotice`: something other than you sent it, a thread's answers
+ * among them) shows as one and has no Edit: it is not yours to take into the box.
  */
 export function QueuedMessages({
   queue,
   onTakeBack,
-  onReopenAnswers,
 }: {
   readonly queue: ChatQueue;
   readonly onTakeBack: (message: string, queue: "steering" | "followUp") => void;
-  /** Your answers from the Questions panel, taken back to change them there (`reopen_answers`). */
-  readonly onReopenAnswers: (message: string) => void;
 }): ReactNode {
   const items = [
     ...queue.steering.map((message, index) => ({
@@ -46,13 +42,7 @@ export function QueuedMessages({
             className="flex h-8 items-center gap-2 rounded-lg border border-l2 bg-raise pr-1 pl-3 text-xs"
           >
             <span className="shrink-0 text-t3">
-              {notice?.source === "questions"
-                ? "Your answers"
-                : notice !== null
-                  ? "Notice"
-                  : item.queue === "steering"
-                    ? "Steer"
-                    : "Follow-up"}
+              {notice !== null ? "Notice" : item.queue === "steering" ? "Steer" : "Follow-up"}
             </span>
             <span className="min-w-0 flex-1 truncate text-t1">
               {notice !== null ? notice.text : attachedSummary(item.message)}
@@ -78,17 +68,6 @@ export function QueuedMessages({
                 size="icon-xs"
                 aria-label="Edit queued message"
                 onClick={() => onTakeBack(item.message, item.queue)}
-              >
-                <Pencil />
-              </Button>
-            )}
-            {notice?.source === "questions" && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label="Edit your answers"
-                onClick={() => onReopenAnswers(item.message)}
               >
                 <Pencil />
               </Button>

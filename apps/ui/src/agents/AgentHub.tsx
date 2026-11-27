@@ -26,7 +26,6 @@ const READ_ONLY: RowActions = {
   onDismissNotice: () => undefined,
   onShareOpened: () => undefined,
   onEdit: () => undefined,
-  onEditAnswers: () => undefined,
   canEdit: false,
 };
 
