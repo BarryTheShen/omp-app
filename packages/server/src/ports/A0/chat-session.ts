@@ -2061,6 +2061,17 @@ export class ChatSessionPortRuntime {
       const { threadId, folderPath } = entry.bootstrap;
       return todos.agentCall({ threadId, folder: folderPath }, request.params);
     }
+    if (request.method === "app.threads") {
+      const threads = this.#context.threads;
+      if (threads === undefined) {
+        return Promise.resolve({
+          content: [{ type: "text", text: "This app keeps no Workbench." }],
+          isError: true,
+        });
+      }
+      const { threadId, folderPath } = entry.bootstrap;
+      return threads.agentCall({ threadId, folder: folderPath }, request.params);
+    }
     if (answererOf(entry, request) === undefined) {
       void this.#dropLeftovers(entry, isHostToolCall(request) ? "tools" : "schemes");
       return Promise.reject(new Error("The page that gave this tool to the chat has closed."));
@@ -2348,10 +2359,16 @@ export class ChatSessionPortRuntime {
 
   /**
    * Sends a queued task's message (#14): into the chat, opened again from its file when this server does not run it, or
-   * into a new chat of the folder. A chat a usage rule holds, a paused one, or one in a turn gets nothing yet. A view
-   * the task opened is let go once the message is sent, so the chat stops when idle as any unwatched chat does.
+   * into a new chat of the folder. A chat a usage rule holds, a paused one, or one in a turn gets nothing yet; with
+   * `steer` (a Workbench thread's notice: the person's answer or message) a turn that runs takes it at its next step, as
+   * a message typed during a reply does. A view the task opened is let go once the message is sent, so the chat stops
+   * when idle as any unwatched chat does.
    */
-  async deliverTask(target: TaskTarget, text: string): Promise<TaskDelivery> {
+  async deliverTask(
+    target: TaskTarget,
+    text: string,
+    options: { readonly steer?: boolean } = {},
+  ): Promise<TaskDelivery> {
     // While an omp update moves the chats to the new omp, a task waits: it would open a chat or start a turn mid-move.
     await this.#updateHoldRestored;
     if (this.#updateHold?.held() === true) return { outcome: "held" };
@@ -2385,7 +2402,8 @@ export class ChatSessionPortRuntime {
       if (this.#pausedOrWished(entry.bootstrap.threadId)) return { outcome: "paused" };
       await this.#ensureRunning(entry);
       const state = await entry.client.request("get_state", {});
-      if (state.isStreaming || state.isCompacting) return { outcome: "busy" };
+      if (state.isCompacting) return { outcome: "busy" };
+      if (state.isStreaming && options.steer !== true) return { outcome: "busy" };
       // Looked at again with nothing awaited before the send: a hold or a pause that came while the chat opened.
       if (this.#updateHold?.held() === true) return { outcome: "held" };
       if (this.#pausedOrWished(entry.bootstrap.threadId)) return { outcome: "paused" };
@@ -2393,7 +2411,10 @@ export class ChatSessionPortRuntime {
         const first = text.replace(/\s+/g, " ").trim();
         if (first !== "") entry.firstPrompt = first.slice(0, FIRST_PROMPT_CHARS);
       }
-      await entry.client.send("prompt", { text }).answer;
+      await entry.client.send(
+        "prompt",
+        state.isStreaming ? { text, streamingBehavior: "steer" } : { text },
+      ).answer;
       this.#context.logger?.info("chat_session.task_sent", { threadId });
       return { outcome: "sent", threadId };
     } finally {

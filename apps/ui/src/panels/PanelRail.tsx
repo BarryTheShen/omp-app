@@ -18,12 +18,15 @@ export function PanelRail({
   chat,
   onDashboard,
   dashboardWaiting,
+  workbenchWaiting,
 }: {
   /** The focused pane's chat: the Questions button counts its questions that wait for an answer. */
   readonly chat: ChatController | null;
   readonly onDashboard: () => void;
   /** Every chat's open questions and the to-dos due, for the dashboard button's count. */
   readonly dashboardWaiting: number;
+  /** Workbench's threads that wait on you, for its button's count. */
+  readonly workbenchWaiting: number;
 }): ReactNode {
   const { open, panel } = usePanelState();
   const waiting = useWaiting(chat);
@@ -37,7 +40,7 @@ export function PanelRail({
     >
       {PANELS.map((item) => {
         const shown = open && item.id === panel;
-        const count = item.id === "btw" ? waiting : 0;
+        const count = item.id === "btw" ? waiting : item.id === "workbench" ? workbenchWaiting : 0;
         const label = count > 0 ? `${item.title}, ${count} waiting for you` : item.title;
         return (
           <Tooltip key={item.id}>

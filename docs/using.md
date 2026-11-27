@@ -125,6 +125,16 @@ The first button. **This chat** shows how full its context is (its tokens out of
 
 The commands and subagents omp sends to the background, while they run and for a few minutes after. A click on a command shows its output (its last 64 KiB) and **Cancel job** stops one of this chat's own; a subagent opens in the Agent Hub. At the top are **Pause all chats** and **Resume all**.
 
+### Workbench
+
+One place per piece of work: each bug, feature or task is a **thread**, kept on the server (in the app's data folder, `threads/`), never on GitHub. A thread's timeline holds who opened it and why, the agent's updates with a bar of its steps, its questions and your answers, messages both ways, links (commits, issues, releases, chats) and its state: Open, In progress, Waiting on you, Done or Closed. The rail button counts the threads that wait on you.
+
+- **The list** has the tabs **Needs you** (a question to answer, or set waiting on you), **In progress**, **Done** and **All**, newest activity first. A click opens the thread; **Threads** goes back.
+- **The agent's side.** Every chat has the tools `thread_open`, `thread_read`, `thread_update`, `thread_ask`, `thread_state` and `thread_link`: it opens a thread for a piece of work, posts updates and progress there, asks there, and links what it made. A thread a chat opens is that chat's, and only it asks in it.
+- **Answering.** A thread's questions are answered as in Questions (the recommended choice already picked, **Other…**, **Add a note**, **Skip**). Once every question of an ask has an answer or a skip they go to the thread's chat together; **Send the N ready** sends the ready ones now. They reach the chat at once, also while it works, as a notice headed "From Workbench", never as your message.
+- **Writing.** The box at a thread's foot (Send, or Ctrl+Enter) puts your message in the thread and sends it to the thread's chat the same way. The state can be changed at the top; **Open its chat** opens the chat that owns it, and **Hand it to this chat** gives it to the chat you are in, which is told.
+- **New thread** takes a title, a kind (Bug, Feature, Task, Question) and what you want, and hands the thread to **This chat**, **The main chat** or **A new chat in this folder**; that chat gets it as a notice. **Make this chat the main chat** picks the chat that takes threads no chat owns.
+
 ### Questions
 
 The Questions panel has two tabs. Its rail button counts the questions that wait for you in the chat you are in.

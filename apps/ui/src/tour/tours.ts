@@ -2952,6 +2952,36 @@ const PORTS_TOUR: Tour = {
   ],
 };
 
+const WORKBENCH_PANEL = part("workbench-panel");
+
+/** Workbench: one thread per piece of work, where the agent posts its updates and asks, and you answer and write. */
+const WORKBENCH_TOUR: Tour = {
+  id: "workbench-2026-11-27",
+  title: "Workbench",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "One thread per piece of work",
+      text: "Click <b>Workbench</b> on this rail: each bug, feature or task gets a thread, kept on this server, never on GitHub. The button counts the threads that wait on you.",
+      action: { kind: "appears", selector: WORKBENCH_PANEL },
+    },
+    {
+      target: WORKBENCH_PANEL,
+      title: "What waits on you comes first",
+      text: "<b>Needs you</b> lists threads with a question for you, or waiting on you. A thread shows the agent's updates with a bar of its steps, its questions to answer, and a box to write in: what you write and answer reaches the thread's chat at once, also while it works.",
+      action: next,
+    },
+    {
+      target: WORKBENCH_PANEL,
+      title: "Open one yourself",
+      text: "<b>New thread</b> hands a thread to this chat, the main chat or a new chat, which takes it up and answers in it.",
+      action: next,
+    },
+  ],
+};
+
 const ACCESS_PANEL = part("access-panel");
 
 /** #20: the computers agents may reach through the app, their switches, and what ran on them. */
@@ -3844,6 +3874,13 @@ const OMP_19_1_1_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-27-workbench",
+    when: "2026-11-27T00:50:00Z",
+    summary:
+      "Workbench: one thread per bug, feature or task, where the agent posts its updates and progress and asks you, and you answer and write; it reaches the thread's chat at once, also while it works.",
+    tours: [WORKBENCH_TOUR],
+  },
   {
     id: "2026-11-27-running-first",
     when: "2026-11-27T00:30:00Z",

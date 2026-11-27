@@ -99,6 +99,7 @@ import {
   createStatsRegistration,
   createTasksRuntime,
   createTodosRuntime,
+  createWorkThreadsRuntime,
   type IndexedChat,
   OmpStats,
   readChatSearchConfig,
@@ -138,6 +139,8 @@ import { createPortRegistry, type PortRegistry } from "../src/registry/ports";
 import { parseRemoteOrigin, REMOTE_ORIGIN_ENV } from "../src/remote-origin";
 import { EventReplayHub } from "../src/replay";
 import { type AppServer, createAppServer } from "../src/server";
+import { answerThreadCall } from "../src/threads/agent";
+import { WorkThreadStore } from "../src/threads/store";
 import { answerAgentCall } from "../src/todos/agent";
 import { SiyuanMirror } from "../src/todos/siyuan-mirror";
 import { TodoStore } from "../src/todos/store";
@@ -511,6 +514,8 @@ export async function createCompositionServer(
   });
   // Every chat's questions that wait for you, for the dashboard (D7), kept in the app's data folder.
   const openQuestions = await OpenQuestions.open(appDataDir);
+  // Workbench's threads (one per piece of work), kept in the app's data folder.
+  const workThreadStore = await WorkThreadStore.open(appDataDir);
   /** A chat's name as the chat list shows it, for the changes its agent makes to the to-do list. */
   const chatTitle = (threadId: ThreadId): Promise<string | null> =>
     runningChatTitle(threadId, {
@@ -542,6 +547,10 @@ export async function createCompositionServer(
     todos: {
       agentCall: async (chat, call) =>
         answerAgentCall(todoStore, { ...chat, title: await chatTitle(chat.threadId) }, call),
+    },
+    threads: {
+      agentCall: async (chat, call) =>
+        answerThreadCall(workThreadStore, { ...chat, title: await chatTitle(chat.threadId) }, call),
     },
     questions: {
       record: (threadId, folder, record) => openQuestions.record(threadId, folder, record),
@@ -954,6 +963,19 @@ export async function createCompositionServer(
     taskQueue.hasWaitingFor(threadId) ||
     a0Runtime.usagePauses.isSetFor(threadId);
   const tasks = createTasksRuntime({ queue: taskQueue, publish });
+  // Workbench's port: what the person writes and answers in a thread reaches its chat at once, also during a turn; a
+  // chat that cannot take it now (held, paused, mid-compaction) gets it from the task queue once it is free.
+  const workThreads = createWorkThreadsRuntime({
+    store: workThreadStore,
+    publish,
+    deliver: async (target, text) => {
+      const delivery = await a0Runtime.tasks.deliver(target, text, { steer: true });
+      if (delivery.outcome === "sent") return delivery.threadId;
+      if (delivery.outcome === "gone") throw new Error(delivery.problem);
+      await taskQueue.add({ text, target, label: "Workbench", when: { kind: "free" } });
+      return target.kind === "chat" ? target.threadId : null;
+    },
+  });
   // Every chat's questions that wait (those asked without waiting, and omp's that stop a chat), for the dashboard, and
   // `changed` to every device.
   const questions = createQuestionsRuntime({
@@ -1111,6 +1133,7 @@ export async function createCompositionServer(
     runningChats.registration,
     todos.registration,
     tasks.registration,
+    workThreads.registration,
     questions.registration,
     // omp's statistics in brief for the dashboard, read from the page the shares run (#2836 D6).
     createStatsRegistration({ stats: ompStats }),
@@ -1206,6 +1229,8 @@ export async function createCompositionServer(
           usageLimitStore.dispose();
           runningChats.stop();
           todos.stop();
+          workThreads.stop();
+          await workThreadStore.settled();
           siyuanCopy.stop();
           chatIndex.stop();
           speechRecordings.stop();

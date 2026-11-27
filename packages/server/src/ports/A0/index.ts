@@ -28,6 +28,7 @@ export * from "./shares/stats";
 export * from "./stats";
 export * from "./tasks";
 export * from "./todos";
+export * from "./work-threads";
 
 /**
  * Main's registry composition seam. Add the returned registrations to `createPortRegistry([...])`
@@ -101,7 +102,12 @@ export interface A0Runtime {
   abortTurn(threadId: ThreadId, call: PortHandlerContext): Promise<unknown>;
   /** Queued tasks' messages (#14; see the chat runtime): sent when the chat is free, and each chat settling after a turn. */
   readonly tasks: {
-    deliver(target: TaskTarget, text: string): Promise<TaskDelivery>;
+    /** With `steer`, a chat in a turn takes the message at its next step instead of answering `busy`. */
+    deliver(
+      target: TaskTarget,
+      text: string,
+      options?: { readonly steer?: boolean },
+    ): Promise<TaskDelivery>;
     /** When the 5-hour window of the chat's provider next resets, by the last usage reading; null: not known. */
     resetOf(threadId: ThreadId): Promise<number | null>;
     onTurnEnd(listener: (threadId: ThreadId) => void): () => void;
@@ -146,7 +152,7 @@ export function createA0Runtime(context: A0PortContext): A0Runtime {
     abortTurn: (threadId, call) =>
       chat.runtime.request({ threadId, method: "abort", params: {} }, call),
     tasks: {
-      deliver: (target, text) => chat.runtime.deliverTask(target, text),
+      deliver: (target, text, options) => chat.runtime.deliverTask(target, text, options),
       resetOf: (threadId) => chat.runtime.taskResetOf(threadId),
       onTurnEnd: (listener) => chat.runtime.onTurnEnd(listener),
     },

@@ -132,6 +132,7 @@ import { LiveSecrets } from "./live-secrets";
 import { NO_MODEL_HINT } from "./no-model";
 import { AskAsyncTool } from "./questions";
 import { SharedTodosTool } from "./shared-todos";
+import { WorkThreadTools } from "./work-threads";
 
 /** One chat's session, ready for the loop. */
 export interface ChatSession {
@@ -143,6 +144,8 @@ export interface ChatSession {
   readonly askAsync: AskAsyncTool;
   /** The app's `shared_todos` tool; the loop gives it the host's line to the server. */
   readonly sharedTodos: SharedTodosTool;
+  /** Workbench's `thread_*` tools; the loop gives them the host's line to the server. */
+  readonly workThreads: WorkThreadTools;
 }
 
 /** Where omp's launch notices go: omp prints them on stderr in a protocol mode, and so does the chat host. */
@@ -361,15 +364,16 @@ export async function createChatSession(
     );
   }
 
-  // The app's own tools, beside omp's: questions the agent asks without waiting (`questions.ts`), and the to-do list it
-  // shares with the person and the other chats (`shared-todos.ts`). Secrets saved while the chat runs reach it through
-  // `live-secrets.ts`'s hook.
+  // The app's own tools, beside omp's: questions the agent asks without waiting (`questions.ts`), the to-do list it
+  // shares with the person and the other chats (`shared-todos.ts`), and Workbench's threads (`work-threads.ts`).
+  // Secrets saved while the chat runs reach it through `live-secrets.ts`'s hook.
   const askAsync = new AskAsyncTool();
   const sharedTodos = new SharedTodosTool();
+  const workThreads = new WorkThreadTools();
   const liveSecrets = new LiveSecrets();
   const created = await createAgentSession({
     ...sessionOptions,
-    customTools: [askAsync.definition, sharedTodos.definition],
+    customTools: [askAsync.definition, sharedTodos.definition, ...workThreads.definitions],
     extensions: [...(sessionOptions.extensions ?? []), liveSecrets.extension],
     eventBus,
     subagentEventBus,
@@ -436,6 +440,7 @@ export async function createChatSession(
     subagentEventBus,
     askAsync,
     sharedTodos,
+    workThreads,
   };
 }
 

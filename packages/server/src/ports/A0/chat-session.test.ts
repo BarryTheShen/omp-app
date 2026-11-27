@@ -731,6 +731,36 @@ describe("the chat session runtime: opening a chat", () => {
     await runtimeContext.processRegistry.closeAll();
   });
 
+  test("a task waits for a chat in a turn, but a thread's notice with steer joins the turn at once", async () => {
+    const created: FakeChatHost[] = [];
+    const runtimeContext = context(created);
+    const runtime = createA0Runtime(runtimeContext);
+    const handlers = runtime.registrations[0]?.handlers as HandlerSet;
+    await getHandler(handlers, "open")({ folderPath: folder, start: "new" }, call("one"));
+    const host = created[0];
+    if (host === undefined) throw new Error("missing fake host");
+    const target = { kind: "chat", threadId: authorityThread } as const;
+
+    host.extraState = { ...host.extraState, isStreaming: true };
+    expect(await runtime.tasks.deliver(target, "a queued task")).toEqual({ outcome: "busy" });
+    expect(await runtime.tasks.deliver(target, "the person's answer", { steer: true })).toEqual({
+      outcome: "sent",
+      threadId: authorityThread,
+    });
+    expect(paramsOf(host, "prompt")).toEqual([
+      { text: "the person's answer", streamingBehavior: "steer" },
+    ]);
+
+    // No turn runs: the notice starts one, as any message does.
+    host.extraState = { ...host.extraState, isStreaming: false };
+    await runtime.tasks.deliver(target, "later", { steer: true });
+    expect(paramsOf(host, "prompt").at(-1)).toEqual({ text: "later" });
+    // Compacting: nothing joins, steer or not.
+    host.extraState = { ...host.extraState, isCompacting: true };
+    expect(await runtime.tasks.deliver(target, "x", { steer: true })).toEqual({ outcome: "busy" });
+    await runtimeContext.processRegistry.closeAll();
+  });
+
   test("a chat's pause, as its host reports it, is kept by the registry for the chat list", async () => {
     const created: FakeChatHost[] = [];
     const runtimeContext = context(created);

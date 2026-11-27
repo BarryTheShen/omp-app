@@ -288,7 +288,7 @@ function WaitingAskCard({
 }
 
 /** One question's answer as the card holds it before it goes: the choices, the written answer, the note, or a skip. */
-interface Draft {
+export interface Draft {
   readonly picked: readonly string[];
   /** The written answer: Other…'s, or the whole answer when there are no choices; undefined while Other… is off. */
   readonly typed: string | undefined;
@@ -297,7 +297,7 @@ interface Draft {
 }
 
 /** Where a question's answer starts: its waiting answer, else the recommended choice already picked. */
-function draftOf(record: QuestionRecord, held: QuestionAnswer | null): Draft {
+export function draftOf(record: QuestionRecord, held: QuestionAnswer | null): Draft {
   const written = record.options.length === 0 ? "" : undefined;
   if (held !== null)
     return {
@@ -317,7 +317,7 @@ function draftOf(record: QuestionRecord, held: QuestionAnswer | null): Draft {
 }
 
 /** A question has what its card needs: a choice, a written answer, or a skip. */
-const decided = (draft: Draft): boolean =>
+export const decided = (draft: Draft): boolean =>
   draft.skipped || draft.picked.length > 0 || (draft.typed ?? "").trim() !== "";
 
 /**
@@ -510,7 +510,7 @@ function AskCard({
  * or a box to write in; and a note. A skipped question shows only that it is skipped, with Answer to take it back. In
  * the panel (`onReadAll`), a question longer than about 12 lines, or one with a table, shows its start and Read all.
  */
-function QuestionFields({
+export function QuestionFields({
   record,
   draft,
   onChange,

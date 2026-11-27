@@ -270,8 +270,10 @@ export async function runChatLoop(options: ChatLoopOptions): Promise<void> {
   const gate = new InputGate();
   /** Dialogs, host tool calls and host URI reads wait here for the server's answers. */
   const requests = new HostRequests(writeMessage);
-  // The to-do list's tool asks the server through the same line (`shared-todos.ts`).
+  // The to-do list's tool and Workbench's tools ask the server through the same line (`shared-todos.ts`,
+  // `work-threads.ts`).
   chat.sharedTodos.attach(requests);
+  chat.workThreads.attach(requests);
   const ui = new HostUIContext(requests, emit, () => session.sessionManager.getCwd());
   const hostTools = new HostTools(requests, emit);
   const hostUris = new HostUriSchemes(requests, emit);

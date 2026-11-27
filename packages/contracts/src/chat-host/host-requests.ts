@@ -26,6 +26,7 @@ import {
   type UriWriteRequest,
 } from "./host-tools";
 import type { SharedTodosRequest } from "./shared-todos";
+import type { WorkThreadToolRequest } from "./work-threads";
 
 export interface ChatHostHostMethodMap {
   readonly "ui.select": { readonly params: SelectDialog; readonly result: ValueAnswer };
@@ -42,6 +43,11 @@ export interface ChatHostHostMethodMap {
   readonly "uri.write": { readonly params: UriWriteRequest; readonly result: UriWriteAnswer };
   /** The `shared_todos` tool's call: the server answers it itself, from the to-do list; no page sees it. */
   readonly "app.todos": { readonly params: SharedTodosRequest; readonly result: ToolCallAnswer };
+  /** A Workbench tool's call (`thread_*`): the server answers it itself, from the threads; no page sees it. */
+  readonly "app.threads": {
+    readonly params: WorkThreadToolRequest;
+    readonly result: ToolCallAnswer;
+  };
 }
 export type ChatHostHostMethod = keyof ChatHostHostMethodMap;
 
@@ -127,6 +133,7 @@ export const HOST_METHOD_ANSWERS: {
   "uri.read": UriReadAnswer,
   "uri.write": UriWriteAnswer,
   "app.todos": ToolCallAnswer,
+  "app.threads": ToolCallAnswer,
 };
 
 /** Whether a host's request names one of the host's methods; never an object's inherited names. */

@@ -5,6 +5,7 @@ import {
   FolderTree,
   Gauge,
   Globe,
+  Hammer,
   Layers,
   ListChecks,
   type LucideIcon,
@@ -23,6 +24,7 @@ import { JobsPanel } from "./jobs/JobsPanel";
 import { PortsPanel } from "./ports/PortsPanel";
 import { ProgressPanel } from "./progress/ProgressPanel";
 import { UsagePanel } from "./usage/UsagePanel";
+import { WorkbenchPanel } from "./workbench/WorkbenchPanel";
 
 /**
  * What a panel draws from: the app's client, the open folder, the focused pane's chat (null when none is), and the
@@ -52,8 +54,8 @@ export interface Panel {
 }
 
 /**
- * The panels in their order: usage, the subagents, the goal and the checklist, the background jobs, then the side
- * questions.
+ * The panels in their order: usage, the subagents, the goal and the checklist, the background jobs, Workbench's threads,
+ * then the side questions.
  */
 export const PANELS: readonly Panel[] = [
   {
@@ -79,6 +81,19 @@ export const PANELS: readonly Panel[] = [
     title: "Jobs",
     icon: Layers,
     render: ({ client, chat }) => <JobsPanel client={client} chat={chat} />,
+  },
+  {
+    id: "workbench",
+    title: "Workbench",
+    icon: Hammer,
+    render: ({ client, folder, chat, openChat }) => (
+      <WorkbenchPanel
+        client={client}
+        folder={folder}
+        chat={chat}
+        {...(openChat === undefined ? {} : { openChat })}
+      />
+    ),
   },
   {
     id: "btw",

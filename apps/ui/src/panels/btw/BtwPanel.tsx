@@ -269,7 +269,7 @@ function BtwTabs({ controller }: { readonly controller: ChatController }): React
 }
 
 /** One of the panel's two tabs; on a phone 44 px tall, a finger's target, as the app's other tabs. */
-function TabButton({
+export function TabButton({
   selected,
   onClick,
   children,

@@ -1,0 +1,163 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import type { Page } from "@playwright/test";
+import { expect, realTest, screenshots, startNewChat } from "./real-omp";
+
+/**
+ * Workbench (threads, one per piece of work) in the new UI on real omp: the agent opens a thread and asks in it with
+ * its `thread_*` tools; the rail counts what waits on you; the panel lists the thread under Needs you; you answer in the
+ * thread and the chat gets the answers as a notice from Workbench. A thread you open goes to the chat you pick, as a
+ * notice, and what you write in it too; another page follows it live.
+ */
+
+const box = (page: Page) => page.getByRole("textbox", { name: "Message" });
+const transcript = (page: Page) => page.getByRole("region", { name: "Transcript" });
+const rail = (page: Page) => page.getByRole("navigation", { name: "Side panel" });
+const workbench = (page: Page) =>
+  page
+    .getByRole("complementary", { name: "Side panel" })
+    .getByRole("tabpanel", { name: "Workbench" });
+
+async function send(page: Page, text: string): Promise<void> {
+  await box(page).fill(text);
+  await box(page).press("Enter");
+}
+
+realTest.describe("Workbench", () => {
+  realTest.setTimeout(240_000);
+
+  realTest(
+    "the agent opens a thread and asks in it; you answer in Workbench, and the chat gets the answers from the thread",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await send(
+        page,
+        'call_tool thread_open {"title":"Slow new chat","kind":"bug","text":"It takes **30 s** to list"}',
+      );
+      const opened = transcript(page).getByText(/tool said: Opened thread [a-z0-9]+/);
+      await expect(opened).toBeVisible({ timeout: 90_000 });
+      const id = /Opened thread ([a-z0-9]+)/.exec((await opened.textContent()) ?? "")?.[1] ?? "";
+      expect(id).not.toBe("");
+      await send(
+        page,
+        `call_tool thread_ask ${JSON.stringify({
+          id,
+          questions: [
+            {
+              id: "order",
+              header: "Order",
+              question: "Build it before or after?",
+              options: [{ label: "Before" }, { label: "After" }],
+              recommended: 1,
+            },
+            { id: "change", question: "Anything to change?" },
+          ],
+        })}`,
+      );
+      await expect(transcript(page).getByText(/tool said: Asked in thread/)).toBeVisible({
+        timeout: 90_000,
+      });
+
+      // The rail counts the thread that waits on you; the panel opens on Needs you.
+      await rail(page).getByRole("button", { name: "Workbench, 1 waiting for you" }).click();
+      const panel = workbench(page);
+      await expect(panel.getByRole("tab", { name: "Needs you (1)" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await panel.getByRole("button", { name: "Slow new chat, Open, 2 questions for you" }).click();
+      const thread = panel.getByRole("region", { name: "Thread: Slow new chat" });
+      await expect(thread.getByRole("list", { name: "Timeline" })).toContainText(
+        "It takes 30 s to list",
+      );
+
+      const card = thread.getByRole("region", { name: "Questions: Order, Anything to change?" });
+      await expect(card.getByRole("radio", { name: "After" })).toBeChecked();
+      const sendAnswers = card.getByRole("button", { name: "Send the 1 ready" });
+      await expect(sendAnswers).toBeEnabled();
+      await card.getByRole("textbox", { name: "Your answer" }).fill("Keep it small");
+      mkdirSync(screenshots, { recursive: true });
+      await page.screenshot({ path: join(screenshots, "workbench-ask-dark.png") });
+      await card.getByRole("button", { name: "Send answers" }).click();
+
+      // The chat gets both answers together, as a notice from Workbench, never as the person's message.
+      await expect(transcript(page).getByText("From Workbench")).toBeVisible({ timeout: 60_000 });
+      await expect(transcript(page)).toContainText(
+        `Thread ${id} "Slow new chat": the person's answers to your questions:`,
+      );
+      await expect(transcript(page)).toContainText("Keep it small");
+      await expect(thread.getByRole("region", { name: "Answered questions" })).toContainText(
+        "Order: After",
+      );
+      // The answers show in their card; the timeline holds the thread's opening and its ask, no empty rows.
+      await expect(
+        thread.getByRole("list", { name: "Timeline" }).getByRole("listitem"),
+      ).toHaveCount(2);
+      await expect(
+        rail(page).getByRole("button", { name: "Workbench", exact: true }),
+      ).toBeVisible();
+
+      await page
+        .getByRole("group", { name: "Theme" })
+        .getByRole("button", { name: "Light" })
+        .click();
+      await page.screenshot({ path: join(screenshots, "workbench-answered-light.png") });
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "a thread you open goes to this chat as a notice, what you write in it too, and another page follows it live",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await send(page, "hello");
+      await expect(transcript(page).getByText("pong")).toBeVisible({ timeout: 90_000 });
+
+      await rail(page).getByRole("button", { name: "Workbench", exact: true }).click();
+      const panel = workbench(page);
+      await expect(panel).toContainText("Nothing waits on you.");
+      await panel.getByRole("button", { name: "New thread" }).click();
+      const form = panel.getByRole("region", { name: "New thread" });
+      await form.getByRole("textbox", { name: "Title" }).fill("Relay test");
+      await form.getByRole("radio", { name: "Feature" }).click();
+      await form.getByRole("textbox", { name: "What you want" }).fill("Drive the laptop's browser");
+      await expect(form.getByRole("radio", { name: "This chat" })).toBeChecked();
+      await form.getByRole("button", { name: "Open the thread" }).click();
+      const thread = panel.getByRole("region", { name: "Thread: Relay test" });
+      await expect(thread).toBeVisible();
+      await expect(transcript(page).getByText("From Workbench")).toBeVisible({ timeout: 60_000 });
+      await expect(transcript(page)).toContainText(
+        '"Relay test" (feature), opened by the person for this chat:',
+      );
+
+      const other = await realApp.open({ path: "/" });
+      await rail(other).getByRole("button", { name: "Workbench", exact: true }).click();
+      const otherPanel = workbench(other);
+      await otherPanel.getByRole("tab", { name: "All" }).click();
+      await otherPanel.getByRole("button", { name: "Relay test, Open" }).click();
+      const otherThread = otherPanel.getByRole("region", { name: "Thread: Relay test" });
+      await expect(otherThread.getByRole("list", { name: "Timeline" })).toContainText(
+        "Drive the laptop's browser",
+      );
+
+      await thread.getByRole("textbox", { name: "Write in the thread" }).fill("Any news?");
+      await thread.getByRole("button", { name: "Send" }).click();
+      await expect(otherThread.getByRole("list", { name: "Timeline" })).toContainText("Any news?", {
+        timeout: 10_000,
+      });
+      await expect(transcript(page)).toContainText('"Relay test": the person wrote:', {
+        timeout: 60_000,
+      });
+      await otherThread.getByRole("combobox", { name: "State" }).selectOption("done");
+      await expect(thread.getByRole("combobox", { name: "State" })).toHaveValue("done", {
+        timeout: 10_000,
+      });
+
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+});

@@ -132,6 +132,13 @@ export interface A0PortContext {
       call: unknown,
     ) => Promise<import("@omp-app/contracts/chat-host").ToolCallAnswer>;
   };
+  /** Answers a chat's Workbench call (`app.threads`, `thread_*`) from the threads; absent: the tools say so. */
+  readonly threads?: {
+    readonly agentCall: (
+      chat: Omit<CallingChat, "title">,
+      call: unknown,
+    ) => Promise<import("@omp-app/contracts/chat-host").ToolCallAnswer>;
+  };
   /** Hears each chat's questions as they change (D7), for the dashboard's list of every chat's questions. */
   readonly questions?: {
     readonly record: (

@@ -68,6 +68,7 @@ export * from "./live";
 export * from "./questions";
 export * from "./shared-todos";
 export * from "./subagents";
+export * from "./work-threads";
 
 export const CHAT_HOST_PROTOCOL_VERSION = 1;
 
@@ -86,7 +87,8 @@ export const CHAT_HOST_PROTOCOL_VERSION = 1;
  * is filled only into commands (bash, eval); any other tool call that carries a placeholder is refused. `secrets_in_place`:
  * the chat's own omp fills in a secret saved while it runs, when the call runs, so the call is saved with the placeholder.
  * `approval_as_set`: the chat keeps the approval mode set in omp; no page switches it (a browser panel's chat was made to
- * ask first in 0.3.1607, and a host of that build is restarted).
+ * ask first in 0.3.1607, and a host of that build is restarted). `work_threads`: the chat's agent has Workbench's
+ * `thread_*` tools (`app.threads`).
  */
 export const CHAT_HOST_FEATURES = [
   "message_host",
@@ -99,6 +101,7 @@ export const CHAT_HOST_FEATURES = [
   "secrets_commands",
   "secrets_in_place",
   "approval_as_set",
+  "work_threads",
 ] as const;
 
 /** An app's name as a message's `host` gives it (`MESSAGE_HOST_PATTERN`). */
