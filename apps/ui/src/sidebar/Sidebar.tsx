@@ -314,7 +314,10 @@ export function Sidebar({
       onSwipe={(next) => setSwiped(next ? session.id : null)}
       actions={{
         pinned: list.pinned.has(session.id),
-        onPrefetch: () => onPrefetch(session),
+        // A chat a window shows already has its transcript: nothing to read ahead.
+        onPrefetch: () => {
+          if (!view.open.has(session.id)) onPrefetch(session);
+        },
         onPin: () => {
           setProblem(null);
           list

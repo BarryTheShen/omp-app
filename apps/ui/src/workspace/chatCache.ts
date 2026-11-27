@@ -34,6 +34,12 @@ export class ChatCache {
     this.#limit = limit;
   }
 
+  /** Whether this page holds the chat open on this client: going back to it shows it without reading its file. */
+  holds(client: AppClient, threadId: ThreadId): boolean {
+    const kept = this.#kept.get(threadId);
+    return kept !== undefined && kept.client === client && usable(kept.controller);
+  }
+
   /** The chat's kept controller on this client, the caller's from now on; undefined when none can be used. */
   take(client: AppClient, threadId: ThreadId): ChatController | undefined {
     const kept = this.#kept.get(threadId);

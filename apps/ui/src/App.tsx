@@ -82,6 +82,7 @@ import { useChatList } from "./sidebar/useChatList";
 import { useRunningChats } from "./sidebar/useRunningChats";
 import { setTourReveal } from "./tour/runner";
 import { WhatsNewList } from "./tour/WhatsNewList";
+import { chatCache } from "./workspace/chatCache";
 import { takeLinkChat } from "./workspace/linkChat";
 import {
   type OpenHow,
@@ -636,7 +637,11 @@ function Shell({
         view={view}
         hidden={(phone && showChat) || listHidden}
         onOpen={openChat}
-        onPrefetch={(session) => prefetchWindow(client, session.id, session.sessionFile)}
+        // A chat this page still holds open shows without its file: reading it ahead would be a read for nothing.
+        onPrefetch={(session) => {
+          if (!chatCache.holds(client, session.id))
+            prefetchWindow(client, session.id, session.sessionFile);
+        }}
         onDeleted={(id) => workspace.current?.forget(id)}
         onSettings={showSettings}
         onDashboard={showDashboard}

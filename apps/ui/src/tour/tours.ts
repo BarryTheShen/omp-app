@@ -2982,6 +2982,21 @@ const WORKBENCH_TOUR: Tour = {
   ],
 };
 
+const KEPT_CHATS_TOUR: Tour = {
+  id: "kept-chats-2026-11-27",
+  title: "Chats kept open",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: "chat-list",
+      title: "Going back is instant",
+      text: "The last eight chats you left stay open in this page, so going back to one shows it as it is now. Resting the pointer on one of them no longer reads its file again.",
+      action: next,
+    },
+  ],
+};
+
 /** Workbench's second step: questions asked while a chat works are asked in threads; the daily briefing. */
 const WORKBENCH_CUTOVER_TOUR: Tour = {
   id: "workbench-cutover-2026-11-27",
@@ -3896,6 +3911,13 @@ const OMP_19_1_1_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-27-kept-chats",
+    when: "2026-11-27T01:25:00Z",
+    summary:
+      "Resting the pointer on a chat the page keeps open, or one a window shows, no longer reads its file again.",
+    tours: [KEPT_CHATS_TOUR],
+  },
   {
     id: "2026-11-27-workbench-cutover",
     when: "2026-11-27T01:10:00Z",

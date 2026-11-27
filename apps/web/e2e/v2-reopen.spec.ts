@@ -26,8 +26,17 @@ realTest.describe("new UI reopening and typing ahead", () => {
     return state;
   }
   type SlowServer = Awaited<ReturnType<typeof slowServer>>;
-  const fileReads = (server: SlowServer) =>
-    server.sent.filter((frame) => frame.includes('"method":"readEntryWindow"')).length;
+  const fileReads = (server: SlowServer, sessionFile?: string) =>
+    server.sent.filter(
+      (frame) =>
+        frame.includes('"method":"readEntryWindow"') &&
+        (sessionFile === undefined || frame.includes(JSON.stringify(sessionFile))),
+    ).length;
+  /** The file of the first chat whose file the page read. */
+  const firstRead = (server: SlowServer): string =>
+    /"sessionFile":("[^"]+")/.exec(
+      server.sent.find((frame) => frame.includes('"method":"readEntryWindow"')) ?? "",
+    )?.[1] ?? "";
 
   const chats = (page: Page) => page.getByRole("navigation", { name: "Chats" });
   const transcript = (page: Page) => page.getByRole("region", { name: "Transcript" });
@@ -51,12 +60,17 @@ realTest.describe("new UI reopening and typing ahead", () => {
 
       // From now on, opening a chat and reading its file each take the server five seconds.
       server.slow = /"method":"(open|readEntryWindow)"/;
-      const readsBefore = fileReads(server);
+      // Chat 1's file, read when it opened first. Another chat's row the pointer comes to rest on as the list moves
+      // may be read ahead; chat 1's own file must not be read again.
+      const chatOne = JSON.parse(firstRead(server)) as string;
+      const readsBefore = fileReads(server, chatOne);
+      expect(readsBefore).toBe(1);
       await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
       await expect(transcript(page).getByText("Seeded chat 1")).toBeVisible({ timeout: 1_500 });
       await expect(box).toHaveAttribute("placeholder", "Message omp", { timeout: 1_500 });
       // The page kept it open: its file is not read again to show it.
-      expect(fileReads(server)).toBe(readsBefore);
+      await page.waitForTimeout(500);
+      expect(fileReads(server, chatOne)).toBe(readsBefore);
 
       expect(realApp.problems).toEqual([]);
     },
