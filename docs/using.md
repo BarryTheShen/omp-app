@@ -12,7 +12,7 @@ It is offered on the first launch on a computer (on the "New: guided tours" card
 
 ### The chat list
 
-The list is the column at the left. omp works in a folder, and the list shows that folder's chats, newest first.
+The list is the column at the left. omp works in a folder, and the list shows that folder's chats, newest first, with the chats that are running above the rest in each section (a chat that works for a while without a new message would otherwise slip under one that just finished).
 
 - **The folder** is the button at the top. It lists the folders that have chats ("Folders with chats"), and **Open a folder…** takes any path. The app remembers the folder you pick, and New chat starts a chat there. `omp-app <folder>` opens the app on a folder from a terminal.
 - **Workspaces** head the list on a computer (see below), one row each, the one shown marked, with **＋** for a new one. **Search** narrows the list by title.

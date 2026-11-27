@@ -3742,6 +3742,21 @@ const VOICE_DETECTOR_TOUR: Tour = {
   ],
 };
 
+const RUNNING_FIRST_TOUR: Tour = {
+  id: "running-first-2026-11-27",
+  title: "Running chats first",
+  minutes: 1,
+  sandbox: false,
+  steps: [
+    {
+      target: "chat-list",
+      title: "Running chats on top",
+      text: "A chat that is running stays above the chats that are not, in Chats and in Pinned, also while it works for a long time without a new message.",
+      action: next,
+    },
+  ],
+};
+
 const SHARP_DIALOGS_TOUR: Tour = {
   id: "sharp-dialogs-2026-11-26",
   title: "Sharp dialogs",
@@ -3829,6 +3844,13 @@ const OMP_19_1_1_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-27-running-first",
+    when: "2026-11-27T00:30:00Z",
+    summary:
+      "Running chats stay above the chats that are not running, also while they work for a long time without a new message.",
+    tours: [RUNNING_FIRST_TOUR],
+  },
   {
     id: "2026-11-26-sharp-dialogs",
     when: "2026-11-26T23:30:00Z",

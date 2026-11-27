@@ -150,6 +150,45 @@ realTest.describe("new UI chat list and pane keys", () => {
     );
 
     realTest(
+      "a running chat stays above a chat that is not running, though the other's last message is newer",
+      async ({ realApp }) => {
+        const page = await realApp.open({ path: "/" });
+        await chats(page).getByRole("button", { name: "Seeded chat 1" }).click();
+        await expect(boxes(page)).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+        await boxes(page).fill("keep going stream_steady");
+        await boxes(page).press("Enter");
+        const transcript = page.getByRole("region", { name: "Transcript" });
+        await expect(transcript).toContainText("Steady line 0", { timeout: 90_000 });
+        const running = chats(page).getByRole("button", { name: /^Seeded chat 1/ });
+        await expect(running).toHaveAccessibleName(/running/);
+
+        // The list orders chats by their last message. Chat 1's is the one it is answering, and its reply streams on;
+        // chat 2 gets a message and its whole reply meanwhile, so its last message is the newer one.
+        await chats(page).getByRole("button", { name: "Seeded chat 2" }).click();
+        const box = boxes(page);
+        await expect(box).toBeFocused();
+        await expect(box).toHaveAttribute("placeholder", /^Message /, { timeout: 120_000 });
+        await box.fill("a quick one");
+        await box.press("Enter");
+        await expect(page.getByRole("region", { name: "Transcript" })).toContainText("pong", {
+          timeout: 60_000,
+        });
+        const idle = chats(page).getByRole("button", { name: /^Seeded chat 2/ });
+        await expect(idle).not.toHaveAccessibleName(/running/, { timeout: 30_000 });
+        await expect(running).toHaveAccessibleName(/running/);
+
+        const list = chats(page).getByRole("region", { name: "Chats" }).getByRole("listitem");
+        await expect(list.first()).toContainText("Seeded chat 1");
+        await expect(list.nth(1)).toContainText("Seeded chat 2");
+        // The list is read again after each write; the running chat is still first.
+        await page.waitForTimeout(1_500);
+        await expect(list.first()).toContainText("Seeded chat 1");
+
+        expect(realApp.problems).toEqual([]);
+      },
+    );
+
+    realTest(
       "a new chat keeps its row while its first reply runs: the row opens it, and stays when the reply is done",
       async ({ realApp }) => {
         const page = await realApp.open({ path: "/" });

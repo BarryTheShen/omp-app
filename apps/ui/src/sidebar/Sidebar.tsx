@@ -214,9 +214,16 @@ export function Sidebar({
   const [folded, fold] = useFolded();
   const shut = (label: string): boolean => needle === "" && folded.has(label);
   const section = (label: string) => ({ folded: shut(label), onFold: () => fold(label) });
-  const shown = list.sessions.filter(
+  // The server lists chats by their file's latest write. A running chat writes nothing while a reply streams or a tool
+  // runs, so a chat that is not running (renamed, or given a notice meanwhile) could pass it: running chats come first,
+  // each part in the list's order.
+  const matching = list.sessions.filter(
     (session) => needle === "" || titleOf(session).toLowerCase().includes(needle),
   );
+  const shown = [
+    ...matching.filter((session) => list.running.has(session.id)),
+    ...matching.filter((session) => !list.running.has(session.id)),
+  ];
   const waiting = shown.filter((session) => view.waiting.has(session.id));
   const pinned = shown.filter(
     (session) => list.pinned.has(session.id) && !view.waiting.has(session.id),
