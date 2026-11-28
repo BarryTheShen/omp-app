@@ -26,11 +26,13 @@ import { useOmpQuestions, usePlan } from "../../questions/waiting";
 import { Markdown } from "../../vendor/collab-web/components/transcript/Markdown";
 import { TabButton } from "../btw/BtwPanel";
 import { type Draft, decided, draftOf, QuestionFields } from "../btw/QuestionCard";
+import { useKeptText, useKeptValue } from "./kept";
 import {
   FILTERS,
   type Filter,
   filtered,
   tabName,
+  threadFromMessage,
   useWorkThread,
   useWorkThreadList,
 } from "./threads";
@@ -68,6 +70,15 @@ const onCtrlEnter =
   (act: () => void) =>
   (event: KeyboardEvent<HTMLElement>): void => {
     if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey) || isImeEnter(event)) return;
+    event.preventDefault();
+    act();
+  };
+
+/** Enter sends, as in a chat's message box; Shift+Enter starts a new line. */
+const onEnter =
+  (act: () => void) =>
+  (event: KeyboardEvent<HTMLElement>): void => {
+    if (event.key !== "Enter" || event.shiftKey || isImeEnter(event)) return;
     event.preventDefault();
     act();
   };
@@ -158,27 +169,81 @@ export function WorkbenchPanel({
           New thread
         </Button>
       </div>
-      {stopsShown && <ChatStops controller={chat} />}
-      {shown.length === 0 && (!stopsShown || stops === 0) ? (
-        <p className="px-3 py-2 text-sm text-t3">
-          {filter === "Open" ? "No open threads." : "No closed threads."}
-        </p>
-      ) : (
-        <ul
-          aria-label="Thread list"
-          className="flex min-h-0 flex-col gap-1 overflow-y-auto px-2 pb-2"
-        >
-          {shown.map((thread) => (
-            <li key={thread.id}>
-              <ThreadRow
-                thread={thread}
-                onOpen={() => setView({ kind: "thread", id: thread.id })}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        {stopsShown && <ChatStops controller={chat} />}
+        {shown.length === 0 && (!stopsShown || stops === 0) ? (
+          <p className="px-3 py-2 text-sm text-t3">
+            {filter === "Open" ? "No open threads." : "No closed threads."}
+          </p>
+        ) : (
+          <ul aria-label="Thread list" className="flex flex-col gap-1 px-2 pb-2">
+            {shown.map((thread) => (
+              <li key={thread.id}>
+                <ThreadRow
+                  thread={thread}
+                  onOpen={() => setView({ kind: "thread", id: thread.id })}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <WorkbenchMessage
+        client={client}
+        here={here}
+        onOpened={(id) => setView({ kind: "thread", id })}
+      />
     </div>
+  );
+}
+
+/**
+ * The message box at the foot of a chat's Workbench: what you type opens a thread of its own (a question, titled from
+ * its first line) and the chat answers there, with no form to fill. Its text is kept until sent.
+ */
+function WorkbenchMessage({
+  client,
+  here,
+  onOpened,
+}: {
+  readonly client: AppClient;
+  readonly here: ThreadId;
+  readonly onOpened: (id: WorkThreadId) => void;
+}): ReactNode {
+  const [text, setText] = useKeptText(client, `compose:${here}`);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const send = (): void => {
+    const message = threadFromMessage(text);
+    if (message === null || busy) return;
+    setBusy(true);
+    setProblem(null);
+    client
+      .port(WorkThreadsPort)
+      .open({ ...message, kind: "question", to: { kind: "chat", threadId: here } })
+      .then((thread) => {
+        setText("");
+        onOpened(thread.id);
+      })
+      .catch((failure: unknown) => setProblem(failureText(failure)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <footer className="flex shrink-0 flex-col gap-1.5 border-t border-l2 px-2 py-2">
+      <Textarea
+        aria-label="Message the Workbench"
+        rows={2}
+        placeholder="Ask or tell this chat something: Enter opens a thread for it"
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        onKeyDown={onEnter(send)}
+      />
+      {problem !== null && (
+        <span role="alert" className="text-xs text-bad-ink">
+          {problem}
+        </span>
+      )}
+    </footer>
   );
 }
 
@@ -365,7 +430,7 @@ export function ThreadView({
   readonly onBack: () => void;
 }): ReactNode {
   const read = useWorkThread(client, id);
-  const [reply, setReply] = useState("");
+  const [reply, setReply] = useKeptText(client, `reply:${id}`);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const run = (work: () => Promise<unknown>): void => {
@@ -509,12 +574,12 @@ export function ThreadView({
           rows={2}
           placeholder={
             summary.owner === null
-              ? "Write in the thread (the main chat gets it)"
-              : "Write in the thread (its chat gets it)"
+              ? "Write in the thread (the main chat gets it); Enter sends"
+              : "Write in the thread (its chat gets it); Enter sends"
           }
           value={reply}
           onChange={(event) => setReply(event.target.value)}
-          onKeyDown={onCtrlEnter(send)}
+          onKeyDown={onEnter(send)}
         />
         <div className="flex items-center gap-2">
           <Button size="sm" disabled={busy || reply.trim() === ""} onClick={send}>
@@ -545,6 +610,8 @@ function EntryBody({
   switch (entry.type) {
     case "created":
     case "message":
+      // A thread opened with its title only has no first text.
+      if (entry.text === "") return null;
       return (
         <div className="text-sm text-t1">
           <Markdown text={entry.text} />
@@ -589,6 +656,28 @@ function EntryBody({
   }
 }
 
+/** A question card's answers you changed, by question id, as they are kept until sent. */
+type KeptDrafts = Readonly<Record<string, Draft>>;
+const NO_DRAFTS: KeptDrafts = {};
+const strings = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((one) => typeof one === "string");
+const optionalString = (value: unknown): value is string | undefined =>
+  value === undefined || typeof value === "string";
+
+/** Kept answers read back: only well-formed ones, so a kept text from elsewhere cannot break the card. */
+function keptDrafts(value: unknown): KeptDrafts | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const drafts: Record<string, Draft> = {};
+  for (const [id, draft] of Object.entries(value)) {
+    if (typeof draft !== "object" || draft === null) continue;
+    const { picked, typed, note, skipped } = draft as Record<string, unknown>;
+    if (!strings(picked) || !optionalString(typed) || !optionalString(note)) continue;
+    if (typeof skipped !== "boolean") continue;
+    drafts[id] = { picked, typed, note, skipped };
+  }
+  return drafts;
+}
+
 /** A thread's ask: its questions to answer, with Send; once every one went to the chat, the answers folded. */
 export function AskCard({
   client,
@@ -603,17 +692,23 @@ export function AskCard({
 }): ReactNode {
   const records = entry.questions.map((question) => recordOf(entry.id, question, entry.at));
   const sent = ask?.sent ?? new Set<string>();
-  const [drafts, setDrafts] = useState<ReadonlyMap<string, Draft>>(
-    () =>
-      new Map(
-        records.map((record) => {
-          const held = ask?.answers.get(record.questionId);
-          return [
-            record.questionId,
-            draftOf(record, held === undefined ? null : { ...held, answeredAt: entry.at }),
-          ];
-        }),
-      ),
+  // What you changed in this card, kept until sent (leaving the thread or reloading finds it), over where each answer
+  // starts: its answer waiting on the server, else the recommended choice.
+  const [kept, keep, forget] = useKeptValue<KeptDrafts>(
+    client,
+    `answers:${thread}:${entry.id}`,
+    NO_DRAFTS,
+    keptDrafts,
+  );
+  const drafts = new Map(
+    records.map((record) => {
+      const held = ask?.answers.get(record.questionId);
+      return [
+        record.questionId,
+        kept[record.questionId] ??
+          draftOf(record, held === undefined ? null : { ...held, answeredAt: entry.at }),
+      ];
+    }),
   );
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -670,6 +765,7 @@ export function AskCard({
       }
       // Every question answered: the server sent them together. Some left: the ready ones go now.
       if (!all) await port.sendAnswers({ id: thread, ask: entry.id });
+      forget();
     })()
       .catch((failure: unknown) => setProblem(failureText(failure)))
       .finally(() => setBusy(false));
@@ -686,9 +782,7 @@ export function AskCard({
           key={record.id}
           record={record}
           draft={drafts.get(record.questionId) as Draft}
-          onChange={(draft) =>
-            setDrafts((current) => new Map(current).set(record.questionId, draft))
-          }
+          onChange={(draft) => keep({ ...kept, [record.questionId]: draft })}
           onEnter={() => undefined}
         />
       ))}
@@ -706,6 +800,25 @@ export function AskCard({
   );
 }
 
+/** The New thread form, as it is kept until the thread opens. */
+interface NewThreadForm {
+  readonly title: string;
+  readonly kind: "bug" | "feature" | "task" | "question";
+  readonly text: string;
+}
+const EMPTY_FORM: NewThreadForm = { title: "", kind: "question", text: "" };
+const FORM_KINDS: readonly string[] = ["bug", "feature", "task", "question"];
+
+/** A kept form read back; null when it is not one. */
+function keptForm(value: unknown): NewThreadForm | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { title, kind, text } = value as Record<string, unknown>;
+  if (typeof title !== "string" || typeof text !== "string" || typeof kind !== "string")
+    return null;
+  if (!FORM_KINDS.includes(kind)) return null;
+  return { title, kind: kind as NewThreadForm["kind"], text };
+}
+
 /** New thread in this chat's Workbench: its title, kind and what you want; the chat takes it up and answers in it. */
 function NewThread({
   client,
@@ -719,14 +832,19 @@ function NewThread({
   readonly onOpened: (id: WorkThreadId) => void;
   readonly onCancel: () => void;
 }): ReactNode {
-  const [title, setTitle] = useState("");
-  const [kind, setKind] = useState<WorkThreadKind>("task");
-  const [text, setText] = useState("");
+  // The form is kept until the thread opens, as every Workbench box is.
+  const [form, keepForm, forgetForm] = useKeptValue<NewThreadForm>(
+    client,
+    `new:${here}`,
+    EMPTY_FORM,
+    keptForm,
+  );
+  const { title, kind, text } = form;
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const ok = title.trim() !== "" && text.trim() !== "";
+  const ok = title.trim() !== "";
   const open = (): void => {
-    if (!ok) return;
+    if (!ok || busy) return;
     setBusy(true);
     setProblem(null);
     client
@@ -737,7 +855,10 @@ function NewThread({
         text: text.trim(),
         to: { kind: "chat", threadId: here },
       })
-      .then((thread) => onOpened(thread.id))
+      .then((thread) => {
+        forgetForm();
+        onOpened(thread.id);
+      })
       .catch((failure: unknown) => setProblem(failureText(failure)))
       .finally(() => setBusy(false));
   };
@@ -751,14 +872,15 @@ function NewThread({
       <h2 className="text-sm font-medium text-t1">New thread</h2>
       <Input
         aria-label="Title"
-        placeholder="Title: the bug or feature, in a few words"
+        placeholder="What you want, in a line: Enter opens it"
         value={title}
-        onChange={(event) => setTitle(event.target.value)}
+        onChange={(event) => keepForm({ ...form, title: event.target.value })}
+        onKeyDown={onEnter(open)}
       />
       <RadioGroup
         aria-label="Kind"
         value={kind}
-        onValueChange={(value) => setKind(value as WorkThreadKind)}
+        onValueChange={(value) => keepForm({ ...form, kind: value as NewThreadForm["kind"] })}
         className="flex flex-wrap gap-3"
       >
         {KINDS.map((one) => (
@@ -770,11 +892,11 @@ function NewThread({
         ))}
       </RadioGroup>
       <Textarea
-        aria-label="What you want"
-        rows={5}
-        placeholder="What it is about, and what done looks like"
+        aria-label="Details (optional)"
+        rows={3}
+        placeholder="Details, if the title is not enough (optional; Ctrl+Enter opens it)"
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => keepForm({ ...form, text: event.target.value })}
       />
       <div className="flex items-center gap-2">
         <Button size="sm" disabled={busy || !ok} onClick={open}>

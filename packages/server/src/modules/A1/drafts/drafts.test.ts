@@ -93,6 +93,34 @@ describe("DraftStoreService", () => {
     store.dispose();
   });
 
+  test("keeps a Workbench box's text apart from a chat's, also after a restart, and refuses a key of no box", async () => {
+    const root = await temporaryDirectory();
+    const appDataDir = join(root, "app");
+    const store = new DraftStoreService({ appDataDir });
+    const reply = { kind: "work", key: "reply:mwyf36n5yns0a0" } as const;
+    const saved = await store.save({
+      scope: reply,
+      draft: { text: "half an answer", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    await store.save({
+      scope: { kind: "thread", threadId: "mwyf36n5yns0a0" },
+      draft: { text: "the chat's own", attachments: [], failedSends: [] },
+      expectedRevision: null,
+    });
+    store.dispose();
+    const again = new DraftStoreService({ appDataDir });
+    expect((await again.get({ scope: reply })).draft).toMatchObject({
+      text: "half an answer",
+      revision: saved.revision,
+    });
+    expect(
+      (await again.get({ scope: { kind: "work", key: "compose:mwyf36n5yns0a0" } })).draft,
+    ).toBeNull();
+    await expectAppFailure(again.get({ scope: { kind: "work", key: "../../escape" } }));
+    again.dispose();
+  });
+
   test("prunes failed-send history to the newest 20 entries per scope", async () => {
     const root = await temporaryDirectory();
     const store = new DraftStoreService({ appDataDir: join(root, "app") });

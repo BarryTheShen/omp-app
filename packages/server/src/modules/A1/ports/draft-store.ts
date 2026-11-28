@@ -20,6 +20,12 @@ export function createDraftStoreRegistration(context: A1PortContext): PortRegist
             listener,
           );
         }
+        if (scope.startsWith("work:") && scope.length > "work:".length) {
+          return context.draftStore.subscribe(
+            { kind: "work", key: scope.slice("work:".length) },
+            listener,
+          );
+        }
         return () => undefined;
       },
     },

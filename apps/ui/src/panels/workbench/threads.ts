@@ -38,6 +38,29 @@ export function filtered(
 export const tabName = (filter: Filter, threads: readonly WorkThreadSummary[]): string =>
   `${filter} ${filtered(threads, filter).length}`;
 
+/** How long a title taken from a message may be. */
+export const MESSAGE_TITLE_MAX = 80;
+
+/**
+ * A thread from what was typed in a Workbench's message box: its first line is the title (cut at a word, with "…",
+ * when longer than 80 characters), and the text is the whole message when anything was cut or more lines follow, else
+ * empty (the title says it all). Null for a message of nothing but spaces.
+ */
+export function threadFromMessage(
+  message: string,
+): { readonly title: string; readonly text: string } | null {
+  const whole = message.trim();
+  if (whole === "") return null;
+  const first = (whole.split("\n")[0] ?? "").trim();
+  let title = first;
+  if (first.length > MESSAGE_TITLE_MAX) {
+    const room = first.slice(0, MESSAGE_TITLE_MAX - 1);
+    const space = room.lastIndexOf(" ");
+    title = `${(space > MESSAGE_TITLE_MAX / 2 ? room.slice(0, space) : room).trimEnd()}…`;
+  }
+  return { title, text: title === whole ? "" : whole };
+}
+
 /**
  * Workbench's list, kept current from the server's `changed`, and read again after an outage; null until first read.
  * An older server has no Workbench: the list stays null and `missing` is true.

@@ -31,6 +31,7 @@ const MAX_FAILED_SENDS = 20;
 const DRAFTS_DIRECTORY = "drafts";
 const THREADS_DIRECTORY = "threads";
 const FOLDERS_DIRECTORY = "folders";
+const WORK_DIRECTORY = "work";
 
 export interface DraftStoreOptions {
   /** App-owned data root; defaults to OMP_APP_DATA_DIR or ~/.omp/app. */
@@ -59,7 +60,8 @@ export interface DraftAttachmentReferences {
 
 type DraftScopeRequest =
   | { readonly kind: "thread"; readonly threadId: string }
-  | { readonly kind: "folder"; readonly folder: string };
+  | { readonly kind: "folder"; readonly folder: string }
+  | { readonly kind: "work"; readonly key: string };
 type DraftGetRequest = Omit<DraftGetArgs, "scope"> & { readonly scope: DraftScopeRequest };
 type DraftSaveRequest = {
   readonly scope: DraftScopeRequest;
@@ -172,13 +174,18 @@ function unreadableDraft(path: string, error: unknown): AppFailure {
 }
 
 function scopeKey(scope: DraftScopeValue): string {
-  return scope.kind === "thread" ? `thread:${scope.threadId}` : `folder:${scope.folder}`;
+  switch (scope.kind) {
+    case "thread":
+      return `thread:${scope.threadId}`;
+    case "folder":
+      return `folder:${scope.folder}`;
+    case "work":
+      return `work:${scope.key}`;
+  }
 }
 
 function scopesEqual(left: DraftScopeValue, right: DraftScopeValue): boolean {
-  if (left.kind === "thread" && right.kind === "thread") return left.threadId === right.threadId;
-  if (left.kind === "folder" && right.kind === "folder") return left.folder === right.folder;
-  return false;
+  return scopeKey(left) === scopeKey(right);
 }
 
 function normalizeScope(value: DraftScopeRequest): DraftScopeValue {
@@ -308,7 +315,7 @@ export class DraftStoreService {
   async referencedAttachments(): Promise<DraftAttachmentReferences> {
     const refs = new Map<string, AttachmentRef>();
     let complete = true;
-    for (const directory of [THREADS_DIRECTORY, FOLDERS_DIRECTORY]) {
+    for (const directory of [THREADS_DIRECTORY, FOLDERS_DIRECTORY, WORK_DIRECTORY]) {
       const root = join(this.draftsDir, directory);
       let entries: string[] = [];
       try {
@@ -471,8 +478,15 @@ export class DraftStoreService {
   }
 
   private pathForScope(scope: DraftScopeValue): string {
-    const directory = scope.kind === "thread" ? THREADS_DIRECTORY : FOLDERS_DIRECTORY;
-    const id = hashContent(scope.kind === "thread" ? scope.threadId : scope.folder);
+    const directory =
+      scope.kind === "thread"
+        ? THREADS_DIRECTORY
+        : scope.kind === "folder"
+          ? FOLDERS_DIRECTORY
+          : WORK_DIRECTORY;
+    const id = hashContent(
+      scope.kind === "thread" ? scope.threadId : scope.kind === "folder" ? scope.folder : scope.key,
+    );
     return join(this.draftsDir, directory, `${id}.json`);
   }
 

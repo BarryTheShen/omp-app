@@ -78,6 +78,10 @@ realTest.describe("Workbench", () => {
       const sendAnswers = card.getByRole("button", { name: "Send the 1 ready" });
       await expect(sendAnswers).toBeEnabled();
       await card.getByRole("textbox", { name: "Your answer" }).fill("Keep it small");
+      // Half an answer is kept: going back to the list and opening the thread again finds it.
+      await thread.getByRole("button", { name: "Threads" }).click();
+      await panel.getByRole("button", { name: /^Slow new chat, Open/ }).click();
+      await expect(card.getByRole("textbox", { name: "Your answer" })).toHaveValue("Keep it small");
       mkdirSync(screenshots, { recursive: true });
       await page.screenshot({ path: join(screenshots, "workbench-ask-dark.png") });
       await card.getByRole("button", { name: "Send answers" }).click();
@@ -124,7 +128,9 @@ realTest.describe("Workbench", () => {
       const form = panel.getByRole("region", { name: "New thread" });
       await form.getByRole("textbox", { name: "Title" }).fill("Relay test");
       await form.getByRole("radio", { name: "Feature" }).click();
-      await form.getByRole("textbox", { name: "What you want" }).fill("Drive the laptop's browser");
+      await form
+        .getByRole("textbox", { name: "Details (optional)" })
+        .fill("Drive the laptop's browser");
       await expect(form.getByRole("radiogroup", { name: "It goes to" })).toHaveCount(0);
       await form.getByRole("button", { name: "Open the thread" }).click();
       const thread = panel.getByRole("region", { name: "Thread: Relay test" });
@@ -180,6 +186,40 @@ realTest.describe("Workbench", () => {
       await expect(secondPanel).toContainText("No closed threads.");
       await expect(secondPanel.getByRole("button", { name: /^Relay test/ })).toHaveCount(0);
 
+      expect(realApp.problems).toEqual([]);
+    },
+  );
+
+  realTest(
+    "the Workbench's message box opens a thread from what you type, and keeps what you typed until it is sent",
+    async ({ realApp }) => {
+      const page = await realApp.open({ path: "/" });
+      await startNewChat(page);
+      await expect(box(page)).toHaveAttribute("placeholder", "Message omp", { timeout: 120_000 });
+      await send(page, "hello");
+      await expect(transcript(page).getByText("pong")).toBeVisible({ timeout: 90_000 });
+
+      await rail(page).getByRole("button", { name: "Workbench", exact: true }).click();
+      const panel = workbench(page);
+      const message = panel.getByRole("textbox", { name: "Message the Workbench" });
+      await message.fill("When is the job app done?");
+      // Kept: the box leaves (New thread, then Cancel) and comes back holding it.
+      await panel.getByRole("button", { name: "New thread" }).click();
+      await panel.getByRole("button", { name: "Cancel" }).click();
+      await expect(message).toHaveValue("When is the job app done?");
+
+      await message.press("Enter");
+      const thread = panel.getByRole("region", { name: "Thread: When is the job app done?" });
+      await expect(thread).toBeVisible();
+      await expect(transcript(page)).toContainText(
+        '"When is the job app done?" (question), opened by the person for this chat; the title is the whole message',
+        { timeout: 60_000 },
+      );
+      await thread.getByRole("button", { name: "Threads" }).click();
+      await expect(message).toHaveValue("");
+      await expect(
+        panel.getByRole("button", { name: /^When is the job app done\?, Open/ }),
+      ).toBeVisible();
       expect(realApp.problems).toEqual([]);
     },
   );

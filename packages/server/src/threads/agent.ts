@@ -37,7 +37,8 @@ function issues(error: z.ZodError): string {
 const OpenParams = z.object({
   title: z.string(),
   kind: WorkThreadKind.exclude(["briefing"]),
-  text: z.string(),
+  // The person may open a thread with its title only; a chat says what it is about.
+  text: z.string().trim().min(1),
 });
 const ReadParams = z.object({ id: WorkThreadId.optional(), state: WorkThreadState.optional() });
 const IdParams = z.object({ id: WorkThreadId });

@@ -55,10 +55,21 @@ export const SourcedSetting = <Value extends z.ZodType>(value: Value) =>
 export const ConfigWriteLayer = z.enum(["global", "project", "app"]);
 export type ConfigWriteLayer = z.infer<typeof ConfigWriteLayer>;
 
-/** Scope shared by app-owned per-thread and per-folder stores. */
+/**
+ * A box of Workbench's whose text is kept until sent: a chat's message box (`compose:<chat>`), its New thread form
+ * (`new:<chat>`), a thread's reply box (`reply:<thread>`), an ask's answers (`answers:<thread>:<ask>`).
+ */
+export const WorkDraftKey = z
+  .string()
+  .max(300)
+  .regex(/^(compose|new|reply|answers):[A-Za-z0-9][A-Za-z0-9_.:-]*$/);
+export type WorkDraftKey = z.infer<typeof WorkDraftKey>;
+
+/** Scope shared by app-owned per-thread and per-folder stores, and Workbench's boxes (drafts only). */
 export const DraftScope = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("thread"), threadId: ThreadId }),
   z.object({ kind: z.literal("folder"), folder: FolderPath }),
+  z.object({ kind: z.literal("work"), key: WorkDraftKey }),
 ]);
 export type DraftScope = z.infer<typeof DraftScope>;
 

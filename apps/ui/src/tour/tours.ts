@@ -3019,6 +3019,28 @@ const WORKBENCH_PER_CHAT_TOUR: Tour = {
   ],
 };
 
+/** Workbench's message box, and text kept until sent. */
+const WORKBENCH_MESSAGE_BOX_TOUR: Tour = {
+  id: "workbench-message-box-2026-11-28",
+  title: "Type in Workbench",
+  minutes: 1,
+  sandbox: true,
+  steps: [
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Just type",
+      text: "<b>Workbench</b> has a message box at its foot: type what you want and press Enter, and a thread opens for it, answered by the chat. New thread still lets you pick a kind; its details are optional.",
+      action: next,
+    },
+    {
+      target: SIDE_PANEL_RAIL,
+      title: "Nothing you type is lost",
+      text: "Your answers in a question card, a thread's box and the message box keep their text until you send it: leave, close the panel or reload, and it is still there.",
+      action: next,
+    },
+  ],
+};
+
 /** A thread's row shows its latest words as plain text. */
 const WORKBENCH_PLAIN_ROWS_TOUR: Tour = {
   id: "workbench-plain-rows-2026-11-27",
@@ -3971,6 +3993,13 @@ const OMP_19_1_1_TOUR: Tour = {
  * last looked. Each update that changes the app adds itself at the top, with its tour.
  */
 export const UPDATES: readonly Update[] = [
+  {
+    id: "2026-11-28-workbench-message-box",
+    when: "2026-11-28T02:35:00Z",
+    summary:
+      "Workbench has a message box: type and press Enter and a thread opens for it. Answers, replies and the New thread form keep their text until sent, and a thread's details are optional.",
+    tours: [WORKBENCH_MESSAGE_BOX_TOUR],
+  },
   {
     id: "2026-11-27-workbench-plain-rows",
     when: "2026-11-27T16:15:00Z",

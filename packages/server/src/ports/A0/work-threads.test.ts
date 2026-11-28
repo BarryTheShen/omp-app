@@ -84,6 +84,24 @@ describe("Workbench's port", () => {
     expect(events).toEqual([{ id: thread.id, at: expect.any(Number) }]);
   });
 
+  test("opens a thread with its title only: the notice says the title is the message, and the row shows no text", async () => {
+    const { sent, call, store } = await setup();
+    const thread = await call<WorkThreadSummary>("open", {
+      title: "When is the job app done?",
+      kind: "question",
+      text: "",
+      to: { kind: "chat", threadId: CHAT },
+    });
+    expect(thread.last).toBeNull();
+    expect(sent[0]?.text).toContain(
+      `Thread ${thread.id} "When is the job app done?" (question), opened by the person for this chat; the title is the whole message`,
+    );
+    expect(sent[0]?.text).not.toContain("\n\n\n");
+    // Read back after a restart: the empty first text is a valid entry.
+    const again = await WorkThreadStore.open(store.folder.slice(0, -"/threads".length));
+    expect(again.read(thread.id)?.entries[0]).toMatchObject({ type: "created", text: "" });
+  });
+
   test("opens for the main chat only once one is set, and for a new chat records the chat that took it", async () => {
     const { sent, call, store } = await setup();
     const refused = await failure(

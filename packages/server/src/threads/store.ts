@@ -88,7 +88,7 @@ function wordsOf(entry: WorkThreadEntry): string | null {
     case "created":
     case "update":
     case "message":
-      return entry.text;
+      return entry.text === "" ? null : entry.text;
     case "question":
       return entry.questions[0]?.question ?? null;
     default:

@@ -5,6 +5,7 @@ import {
   DraftStore,
   type Revision,
   type ThreadId,
+  type WorkDraftKey,
 } from "@omp-app/contracts";
 import { createStore, del, get, set } from "idb-keyval";
 import { follow } from "../follow";
@@ -12,6 +13,13 @@ import { follow } from "../follow";
 const local = createStore("omp-app-ui", "drafts");
 /** Where this browser keeps a new chat's text: under its pane's key. */
 const newChatKey = (paneChat: string): string => `new-chat:${paneChat}`;
+/** A scope as the app's `changed` stream names it, and as this browser keeps a Workbench box's text. */
+const scopeKey = (scope: DraftScope): string =>
+  scope.kind === "thread"
+    ? `thread:${scope.threadId}`
+    : scope.kind === "folder"
+      ? `folder:${scope.folder}`
+      : `work:${scope.key}`;
 /** How long typing pauses before the app's copy is written. */
 const SERVER_DELAY_MS = 800;
 
@@ -47,12 +55,21 @@ export class ChatDraft {
   #follower: ((before: string, next: string) => void) | null = null;
   #stopFollowing: (() => void) | null = null;
 
-  /** The draft of a saved chat, under its id; or, with a pane key, of a new chat that has no id yet. */
-  constructor(client: AppClient, home: ThreadId | { readonly paneChat: string }) {
+  /**
+   * The draft of a saved chat, under its id; with a pane key, of a new chat that has no id yet; or of one of
+   * Workbench's boxes (`{ work: key }`).
+   */
+  constructor(
+    client: AppClient,
+    home: ThreadId | { readonly paneChat: string } | { readonly work: WorkDraftKey },
+  ) {
     this.#client = client;
     if (typeof home === "string") {
       this.#loadKey = home;
       this.#scope = { kind: "thread", threadId: home };
+    } else if ("work" in home) {
+      this.#scope = { kind: "work", key: home.work };
+      this.#loadKey = scopeKey(this.#scope);
     } else {
       this.#loadKey = newChatKey(home.paneChat);
       this.#scope = null;
@@ -64,6 +81,11 @@ export class ChatDraft {
   /** The draft of a new chat: kept under its pane's key, which the saved layout keeps across a reload. */
   static forNewChat(client: AppClient, paneChat: string): ChatDraft {
     return new ChatDraft(client, { paneChat });
+  }
+
+  /** The text of one of Workbench's boxes, kept as a chat's is until it is sent. */
+  static forWork(client: AppClient, key: WorkDraftKey): ChatDraft {
+    return new ChatDraft(client, { work: key });
   }
 
   async load(): Promise<string> {
@@ -134,10 +156,8 @@ export class ChatDraft {
     this.#stopFollowing?.();
     this.#stopFollowing = null;
     const scope = this.#scope;
-    if (this.#follower === null || scope === null || scope.kind !== "thread") return;
-    const started = this.#client.subscribe(DraftStore, "changed", {
-      scope: `thread:${scope.threadId}`,
-    });
+    if (this.#follower === null || scope === null) return;
+    const started = this.#client.subscribe(DraftStore, "changed", { scope: scopeKey(scope) });
     this.#stopFollowing = follow(started, (changed) => this.#theirs(changed));
     // A change made between `load`'s read and the subscription's start is read once more.
     void started
@@ -149,8 +169,8 @@ export class ChatDraft {
   /** The app's copy as another writer left it; see `follow`. */
   #theirs(changed: DraftChanged): void {
     const scope = this.#scope;
-    if (this.#follower === null || scope?.kind !== "thread") return;
-    if (changed.scope.kind !== "thread" || changed.scope.threadId !== scope.threadId) return;
+    if (this.#follower === null || scope === null) return;
+    if (scopeKey(changed.scope) !== scopeKey(scope)) return;
     const revision = changed.draft?.revision ?? null;
     // This window's own write, or a text it holds already.
     if (revision === this.#revision) return;

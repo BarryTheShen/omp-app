@@ -63,10 +63,11 @@ export function openedNotice(
   kind: WorkThreadKind,
   text: string,
 ): string {
+  // Opened with its title only (the message box, or the form without details): the title is what the person asks.
+  const asked = text === "" ? [] : ["", text];
   return [
-    `${named(summary)} (${kind}), opened by the person for this chat:`,
-    "",
-    text,
+    `${named(summary)} (${kind}), opened by the person for this chat${text === "" ? "; the title is the whole message" : ":"}`,
+    ...asked,
     "",
     `Reply in the thread, not in this chat: your answer, updates and questions go there (thread_update, thread_ask; its id: ${summary.id}). In this chat, one line at most, naming the thread.`,
   ].join("\n");

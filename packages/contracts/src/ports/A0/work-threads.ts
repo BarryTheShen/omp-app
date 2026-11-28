@@ -48,6 +48,8 @@ export type WorkThreadAuthor = z.infer<typeof WorkThreadAuthor>;
 
 const Title = z.string().trim().min(1).max(WORK_THREAD_TITLE_MAX);
 const Text = z.string().trim().min(1).max(WORK_THREAD_TEXT_MAX);
+/** A thread's first text: empty when the person opened it with its title only. */
+const FirstText = z.string().trim().max(WORK_THREAD_TEXT_MAX);
 const Label = z.string().trim().min(1).max(WORK_THREAD_LABEL_MAX);
 
 /** How far the work is: `done` of `total` steps, with the steps' names when the agent gave them. */
@@ -159,11 +161,14 @@ export const WorkThreadPost = z.discriminatedUnion("type", [
 ]);
 export type WorkThreadPost = z.infer<typeof WorkThreadPost>;
 
-/** How a thread is opened: its title, kind, first text, and the chat that owns it (null: none yet). */
+/**
+ * How a thread is opened: its title, kind, first text (empty: the title says it all), and the chat that owns it (null:
+ * none yet).
+ */
 export const OpenWorkThreadArgs = z.strictObject({
   title: Title,
   kind: WorkThreadKind,
-  text: Text,
+  text: FirstText,
   owner: ThreadId.nullable(),
 });
 export type OpenWorkThreadArgs = z.infer<typeof OpenWorkThreadArgs>;
@@ -265,7 +270,7 @@ export const WorkThreadsPort = definePort({
       args: z.strictObject({
         title: Title,
         kind: WorkThreadKind,
-        text: Text,
+        text: FirstText,
         to: WorkThreadTarget,
       }),
       result: WorkThreadSummary,
